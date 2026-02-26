@@ -2,7 +2,7 @@
 使用 Gemini 辨識袋子裡物品並產生回收選擇題 (含重複圖片偵測 + 經驗值系統 + 角色解鎖)
 """
 
-from google import genai
+import google.generativeai as genai
 from PIL import Image
 import os
 import re
@@ -333,6 +333,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
     
