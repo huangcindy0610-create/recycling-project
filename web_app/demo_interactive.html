@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cat Interaction Only</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        .scene {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            cursor: pointer;
+        }
+
+        /* Instructions */
+        .hint {
+            position: absolute;
+            top: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+
+        /* 
+        /* 
+           Cat Assets 
+           Positoned absolutely within the scene.
+           Start hidden below the "ground" or view area.
+           Scaled up as requested (Larger than 250px).
+        */
+
+        .cat-tail {
+            position: absolute;
+            bottom: -400px;
+            /* Start Hidden Deeper */
+            left: 50%;
+            margin-left: 80px;
+            /* Offset to right */
+            width: 130px;
+            /* Larger */
+            height: 320px;
+            /* Larger */
+            background-image: url('static/cat_tail.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: bottom center;
+            transform-origin: bottom center;
+            transition: bottom 1s ease-out;
+            z-index: 10;
+        }
+
+        .cat-head {
+            position: absolute;
+            bottom: -400px;
+            /* Start Hidden Deeper */
+            left: 50%;
+            margin-left: -80px;
+            /* Offset to left */
+            transform: translateX(-50%);
+            width: 320px;
+            /* Larger */
+            height: 280px;
+            /* Larger */
+            background-image: url('static/cat_head.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: top center;
+            transition: bottom 2s ease-out;
+            z-index: 5;
+        }
+
+        /* Animations */
+
+        /* 1. Tail Rises */
+        .cat-tail.rise {
+            bottom: 50px;
+            /* Moves up to visible area */
+        }
+
+        /* 2. Tail Wag (2 times) */
+        @keyframes wagAnimation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            25% {
+                transform: rotate(-15deg);
+            }
+
+            50% {
+                transform: rotate(0deg);
+            }
+
+            75% {
+                transform: rotate(15deg);
+            }
+
+            100% {
+                transform: rotate(0deg);
+            }
+        }
+
+        .cat-tail.wag {
+            animation: wagAnimation 1s ease-in-out;
+            animation-iteration-count: 2;
+            /* Wag twice */
+        }
+
+        /* 3. Head Rises */
+        .cat-head.peek {
+            bottom: 50px;
+            /* SAME height as tail base */
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="scene" id="scene">
+        <div class="hint">點擊畫面開始 (Click to Start)</div>
+        <!-- Cat Parts -->
+        <div class="cat-tail" id="catTail"></div>
+        <div class="cat-head" id="catHead"></div>
+    </div>
+
+    <script>
+        const scene = document.getElementById('scene');
+        const catTail = document.getElementById('catTail');
+        const catHead = document.getElementById('catHead');
+
+        let isPlaying = false;
+
+        scene.addEventListener('click', () => {
+            if (isPlaying) return;
+            isPlaying = true;
+
+            // Reset
+            catTail.classList.remove('rise', 'wag');
+            catHead.classList.remove('peek');
+
+            // Force Reflow
+            void catTail.offsetWidth;
+
+            // Scenario:
+            // 1. Tail Rises
+            // 2. Wags Twice
+            // 3. Head Peeks Slowly
+
+            // Step 1: Tail Rise (Immediate)
+            catTail.classList.add('rise');
+
+            // Step 2: Wag after rise is mostly done
+            // Rise takes 1s.
+            setTimeout(() => {
+                catTail.classList.add('wag');
+            }, 1000);
+
+            // Step 3: Wait for wag to finish (2 times * 1s = 2s)
+            // Starts at 1s. Ends at 1s + 2s = 3s.
+            // "Stop after wagging".
+
+            // Step 4: Head Peeks Slowly
+            setTimeout(() => {
+                catHead.classList.add('peek');
+                isPlaying = false; // Allow restart?
+            }, 3000);
+
+        });
+    </script>
+</body>
+
+</html>

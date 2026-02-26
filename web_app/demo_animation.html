@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動畫預覽 (無需 Python)</title>
+    <!-- 直接引用現有的 CSS -->
+    <link rel="stylesheet" href="static/style.css">
+    <style>
+        /* 為了預覽方便，稍微調整版面 */
+        body {
+            background-color: #e0e0e0;
+        }
+
+        .app-container {
+            margin: 20px auto;
+            min-height: 600px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <header>
+            <h1>Reborn Coffee</h1>
+            <p>您的專屬環保回饋</p>
+        </header>
+
+        <main>
+            <div class="nfc-status-container">
+                <div class="nfc-icon-pulse">
+                    <span class="icon">📡</span>
+                    <div class="ring"></div>
+                </div>
+                <p class="status-text" id="status-text">請將手機/杯子靠近 NFC 感應區...</p>
+            </div>
+
+            <!-- 動畫區域 -->
+            <div class="visual-container">
+                <div class="cup-wrapper">
+                    <div class="cup-handle"></div>
+                    <div class="cup-body">
+                        <div class="liquid" id="liquid">
+                            <div class="character hidden" id="character"></div>
+                        </div>
+                        <div class="logo">RC</div>
+                    </div>
+                    <div class="saucer"></div>
+                </div>
+            </div>
+
+            <div class="action-area">
+                <p style="color:#888;">(點擊任意處開始演示)</p>
+            </div>
+        </main>
+
+        <!-- 回饋 Modal -->
+        <div id="feedback-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+                <h2>環保成效</h2>
+                <div class="result-icon">🛍️</div>
+                <p>您本次累積：</p>
+                <div class="result-stats">
+                    <span id="res-duration">0</span> 分鐘 | <span id="res-times">0</span> 杯
+                </div>
+                <hr>
+                <p class="impact-text">成功減少了 <span id="res-bags" class="highlight">0</span> 個塑膠製品！</p>
+                <p class="encouragement">感謝您為地球盡一份力！</p>
+                <button class="btn-primary" onclick="closeModal()">太棒了！</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store timeout IDs to clear them on reset/restart
+        let animationTimers = [];
+
+        // Add global click listener
+        document.addEventListener('click', function (e) {
+            // Ignore if clicking on buttons or inside the modal content (except backdrop)
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.modal-content')) {
+                return;
+            }
+            // Trigger with random character
+            const characterType = Math.random() > 0.5 ? 'baby' : 'cat';
+            runDemo(characterType);
+        });
+
+        // 純前端模擬邏輯，不依賴後端 APIs
+        function runDemo(type) {
+            resetDemo(); // Clear previous state and timers
+
+            // 設定角色
+            const charEl = document.getElementById('character');
+            charEl.className = `character ${type}`;
+
+            const liquid = document.getElementById('liquid');
+            const statusText = document.getElementById('status-text');
+
+            // 模擬數據
+            const duration = Math.floor(Math.random() * 60) + 30; // 30-90 mins
+            const times = Math.floor(Math.random() * 2) + 1; // 1-3 cups
+            const savedBags = times;
+
+            // 更新文字
+            statusText.innerText = `感應成功！(時長: ${duration}分, ${times}杯)`;
+            statusText.style.color = '#3e2723';
+
+            // 1. 強制重繪確保動畫會跑
+            void liquid.offsetWidth;
+
+            // 2. 液體上升動畫 (2秒)
+            liquid.style.transition = 'height 2s ease-in-out';
+            liquid.style.height = '85%';
+
+            // 3. 角色彈出 (在液體快滿時, 1.8秒處)
+            const t1 = setTimeout(() => {
+                charEl.style.transition = 'bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55)'; // 彈跳效果貝茲曲線
+                charEl.style.bottom = '60px';
+            }, 1800);
+            animationTimers.push(t1);
+
+            // 4. 顯示回饋視窗 (3秒後)
+            const t2 = setTimeout(() => {
+                document.getElementById('res-duration').innerText = duration;
+                document.getElementById('res-times').innerText = times;
+                document.getElementById('res-bags').innerText = savedBags;
+                document.getElementById('feedback-modal').style.display = 'flex';
+            }, 3500);
+            animationTimers.push(t2);
+        }
+
+        function resetDemo() {
+            // Clear any pending timers
+            animationTimers.forEach(id => clearTimeout(id));
+            animationTimers = [];
+
+            const liquid = document.getElementById('liquid');
+            const character = document.getElementById('character');
+
+            liquid.style.transition = 'none';
+            liquid.style.height = '0%';
+
+            character.style.transition = 'none';
+            character.style.bottom = '-100px';
+
+            document.getElementById('feedback-modal').style.display = 'none';
+            document.getElementById('status-text').innerText = '準備中...';
+        }
+
+        function closeModal() {
+            resetDemo();
+            document.getElementById('status-text').innerText = '請將手機/杯子靠近 NFC 感應區... (點擊螢幕開始)';
+        }
+    </script>
+</body>
+
+</html>
+```

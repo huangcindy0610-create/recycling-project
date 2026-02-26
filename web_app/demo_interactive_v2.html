@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Cup Interaction - Baby Only</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #ffffff;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', cursive;
+        }
+
+        .scene {
+            position: relative;
+            width: 600px;
+            height: 500px;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        /* 
+           LAYER 3: BABY CONTAINER
+        */
+        .baby-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 400px;
+            z-index: 25;
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        .baby {
+            position: absolute;
+            left: 50%;
+            bottom: 50px;
+            /* Lower starting position visual anchor */
+            /* transform: translateX(-50%); */
+            /* We will use transform for animation entirely */
+
+            width: 250px;
+            height: 250px;
+            background-image: url('static/baby.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: bottom center;
+
+            /* Initial State: Hidden Down */
+            transform: translateX(-50%) translateY(200px) scale(0.5);
+            opacity: 0;
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .baby.jump {
+            /* Active State: Popped Up */
+            transform: translateX(-50%) translateY(0) scale(1);
+            opacity: 1;
+        }
+
+        /* Splash & Bubbles */
+        .splash-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0;
+            height: 0;
+            z-index: 60;
+        }
+
+        .droplet {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #5A3A29;
+            /* Coffee color splash? Or water? User said "Water splash". Coffee/Water same logic */
+            border-radius: 50%;
+        }
+
+        /* Removed Bubble CSS */
+    </style>
+</head>
+
+<body>
+
+    <div class="scene" id="scene">
+        <div class="baby-container">
+            <div class="baby" id="baby"></div>
+        </div>
+        <div class="splash-container" id="splash"></div>
+    </div>
+
+    <script>
+        const scene = document.getElementById('scene');
+        const baby = document.getElementById('baby');
+        const babyContainer = document.querySelector('.baby-container');
+        const splash = document.getElementById('splash');
+
+        let isPlaying = false;
+
+        function createSplash() {
+            // Position splash near the baby's "jump" point
+            // Adjust loop for nice effect
+            for (let i = 0; i < 20; i++) {
+                let d = document.createElement('div');
+                d.classList.add('droplet');
+                splash.appendChild(d);
+
+                const r = Math.random() * Math.PI * 2; // Full circle splash or arc?
+                // If popping up, splash might go outward
+                const f = 50 + Math.random() * 80;
+                const dx = Math.cos(r) * f;
+                const dy = Math.sin(r) * f - 50; // Bias upwards
+
+                d.animate([
+                    { transform: 'translate(0,0) scale(1)', opacity: 1 },
+                    { transform: `translate(${dx}px, ${dy}px) scale(0.6)`, opacity: 0.8, offset: 0.5 },
+                    { transform: `translate(${dx * 1.2}px, ${dy + 150}px) scale(0)`, opacity: 0 } // Gravity fall
+                ], {
+                    duration: 600 + Math.random() * 300,
+                    fill: 'forwards',
+                    easing: 'cubic-bezier(0.25, 1, 0.5, 1)'
+                }).onfinish = () => d.remove();
+            }
+        }
+
+        scene.addEventListener('click', () => {
+            if (isPlaying) return;
+            isPlaying = true;
+
+            // Reset
+            baby.classList.remove('jump');
+            void baby.offsetWidth; // Force reflow
+
+            // Animate
+            setTimeout(() => {
+                baby.classList.add('jump'); // Trigger jump animation
+                createSplash(); // Trigger splash 
+            }, 100);
+
+            // Reset flag
+            setTimeout(() => {
+                isPlaying = false;
+            }, 1500);
+        });
+    </script>
+
+</body>
+
+</html>

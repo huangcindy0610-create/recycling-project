@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cat Animation V4</title>
+    <link rel="stylesheet" href="static/style_v4.css">
+</head>
+
+<body class="cat">
+    <div class="app-container" onclick="play()">
+        <div class="header-box">Reborn Coffee</div>
+
+        <div class="stats-box">
+            <div class="stat-item">時常: 50 分鐘</div>
+            <div class="stat-item">次數: 3 -> 減少 3 塑膠袋</div>
+        </div>
+
+        <div class="scene">
+            <div class="character"></div>
+            <div class="body-mask"></div>
+            <div class="cup-empty"></div>
+            <div class="cup-full"></div>
+            <div class="bubble">建議!</div>
+        </div>
+
+        <div class="hint">點擊畫面模擬 NFC</div>
+    </div>
+
+    <script>
+        let isPlaying = false;
+        function play() {
+            if (isPlaying) return;
+            const container = document.body;
+            const scene = document.querySelector('.scene');
+
+            if (scene.classList.contains('active')) {
+                scene.classList.remove('active');
+                scene.classList.remove('filling');
+                return;
+            }
+
+            isPlaying = true;
+            scene.classList.add('filling');
+            scene.classList.add('active');
+
+            setTimeout(() => { isPlaying = false; }, 5000);
+        }
+    </script>
+</body>
+
+</html>
