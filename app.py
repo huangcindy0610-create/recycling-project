@@ -21,7 +21,9 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # NFC 監控 API URL
 NFC_API_URL = "https://curvy-humorously-elna.ngrok-free.dev/view"
-
+@app.route('/healthz')
+def healthz():
+    return "ok", 200
 # === 使用時長計算 ===
 def get_weekly_usage():
     """
@@ -364,10 +366,8 @@ def get_user_info():
         'xp': xp,
         'level': level
     })
-  @app.route('/healthz')
-def healthz():
-    return "ok", 200
 if __name__ == '__main__':
     print("[OK] Running via Gunicorn")
+
 
 
