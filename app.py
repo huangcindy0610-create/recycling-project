@@ -364,6 +364,10 @@ def get_user_info():
         'xp': xp,
         'level': level
     })
+  @app.route('/healthz')
+def healthz():
+    return "ok", 200
 if __name__ == '__main__':
     print("[OK] Running via Gunicorn")
+
 
