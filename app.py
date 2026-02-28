@@ -12,8 +12,7 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_for_demo_purposes'  # Required for session
-
+app.secret_key = os.environ.get("SECRET_KEY")
 # 設定圖片上傳存檔的路徑 (使用絕對路徑比較保險)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -368,4 +367,5 @@ def get_user_info():
 
 if __name__ == '__main__':
     print("[OK] 伺服器準備就緒，請打開瀏覽器！")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
