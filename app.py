@@ -364,8 +364,6 @@ def get_user_info():
         'xp': xp,
         'level': level
     })
-
 if __name__ == '__main__':
-    print("[OK] 伺服器準備就緒，請打開瀏覽器！")
+    print("[OK] Running via Gunicorn")
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
