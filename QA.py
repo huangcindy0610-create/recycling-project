@@ -2,7 +2,7 @@
 使用 Gemini 辨識袋子裡物品並產生回收選擇題 (含重複圖片偵測 + 經驗值系統 + 角色解鎖)
 """
 
-from google import genai 
+from google import genai
 from PIL import Image
 import os
 import re
@@ -10,13 +10,13 @@ import sys
 import hashlib
 
 # ==========================================
-# 設定 API Key
+# 使用 Render 的環境變數讀取 API Key
 # ==========================================
-MY_API_KEY = "AIzaSyDVv7Wt-S0e0G5rCXKiCR_6Iut1ZZFi58E"  # 記得填入你的 Key
+client = genai.Client(
+    api_key=os.environ.get("GOOGLE_API_KEY")
+)
 
-# 使用新版 google-genai 套件
-client = genai.Client(api_key=MY_API_KEY)
-MODEL_NAME = "gemini-2.5-flash"  # 2.0 配額用盡，改用 1.5
+MODEL_NAME = "gemini-2.5-flash"
 
 # 檔案設定
 HISTORY_FILE = "processed_history.txt"
@@ -333,8 +333,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-    
-
