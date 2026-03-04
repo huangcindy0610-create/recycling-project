@@ -2,9 +2,3 @@ flask
 gunicorn
 requests
 beautifulsoup4
-pillow
-opencv-python
-numpy
-google-genai
-gunicorn app:app
-
