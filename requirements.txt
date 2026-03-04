@@ -1,5 +1,5 @@
-flask
-gunicorn
-requests
-beautifulsoup4
-google-genai
+flask==2.3.3
+gunicorn==22.1.0
+requests==2.32.0
+beautifulsoup4==4.12.2
+google-genai==0.3.0
