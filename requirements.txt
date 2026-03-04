@@ -6,4 +6,5 @@ pillow
 opencv-python
 numpy
 google-genai
+gunicorn app:app
 
