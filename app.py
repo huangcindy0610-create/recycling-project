@@ -1,3 +1,6 @@
+@app.route("/")
+def home():
+    return "OK FROM APP.PY"
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, jsonify
 import os
 from functools import wraps
@@ -368,6 +371,7 @@ def get_user_info():
     })
 if __name__ == '__main__':
     print("[OK] Running via Gunicorn")
+
 
 
 
