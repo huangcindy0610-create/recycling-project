@@ -21,7 +21,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # NFC 監控 API URL
-NFC_API_URL = "https://curvy-humorously-elna.ngrok-free.dev/view"
+NFC_API_URL = "https://recycling-project-1.onrender.com/view"
 
 # === 使用時長計算 ===
 def get_weekly_usage():
@@ -378,3 +378,4 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     # 監聽 0.0.0.0 確保外部掃描器能進入
     app.run(host='0.0.0.0', port=port)
+
