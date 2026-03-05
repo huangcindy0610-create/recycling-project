@@ -367,6 +367,5 @@ def get_user_info():
     })
 
 if __name__ == '__main__':
-    print("[OK] 伺服器準備就緒，請打開瀏覽器！")
-if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
