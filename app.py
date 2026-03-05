@@ -1,19 +1,30 @@
 import sqlite3
 import os
 import sys
-from flask import Flask, request, render_template_string, g
-from datetime import datetime
+from flask import Flask, request, render_template, redirect, url_for, send_from_directory, session, jsonify, g
+from datetime import datetime, timedelta, date
+from functools import wraps
+
+# 匯入你的自定義模組
+from QA import recognize_item, generate_recycling_quiz, get_level, XP_REWARD_CORRECT, XP_REWARD_WRONG, get_image_hash
+from auth import (register_user, login_user, get_user_xp_by_username, 
+                  update_user_xp_by_username, is_duplicate_image_for_user, 
+                  save_to_history_for_user, can_upload_today, increment_daily_upload,
+                  get_remaining_uploads, DAILY_UPLOAD_LIMIT)
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'reborn_secret_key_888')
 
-# 使用絕對路徑，確保 Render 環境路徑正確
+# --- 路徑設定 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, "NFCtag.db")
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- 1. 資料庫基礎設定 ---
+# --- 1. 資料庫基礎與初始化 ---
 def get_db():
     if 'db' not in g:
-        # 增加 timeout 防止資料庫鎖定 (Locked)
         g.db = sqlite3.connect(DB_NAME, timeout=10)
         g.db.row_factory = sqlite3.Row
     return g.db
@@ -24,11 +35,8 @@ def close_db(e):
     if db is not None:
         db.close()
 
-# --- 2. 初始化功能 (確保在生產環境啟動即執行) ---
 def init_db():
-    try:
-        print(f"--- 系統啟動：檢查資料庫於 {DB_NAME} ---")
-        conn = sqlite3.connect(DB_NAME)
+    with sqlite3.connect(DB_NAME) as conn:
         conn.execute('''
             CREATE TABLE IF NOT EXISTS NFCtag (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,134 +45,175 @@ def init_db():
                 endtime TIMESTAMP
             )
         ''')
-        conn.commit()
-        conn.close()
-        print("--- 資料庫初始化成功 ---")
-    except Exception as e:
-        print(f"--- 資料庫初始化失敗: {str(e)} ---")
+    print("--- 資料庫初始化完成 ---")
 
-# 程式載入時立即執行
 init_db()
 
+# --- 2. 輔助函式 ---
 def format_duration(seconds):
     if seconds is None or seconds < 0: return "00:00:00"
     seconds = int(seconds)
     return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
 
-# --- 3. HTML 模板 ---
-BASE_HTML = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>NFC 監控系統</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: -apple-system, sans-serif; line-height: 1.6; padding: 20px; background: #f0f2f5; color: #333; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        nav { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
-        nav a { text-decoration: none; color: #007bff; font-weight: bold; margin-right: 15px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
-        th, td { padding: 12px; border: 1px solid #eee; text-align: center; }
-        th { background: #f8f9fa; }
-        .status-in { background-color: #fff9db; }
-        .status-done { background-color: #ebfbee; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <nav><a href="/view">📋 即時清單</a><a href="/stat">📊 統計數據</a></nav>
-        {% block content %}{% endblock %}
-    </div>
-</body>
-</html>
-'''
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated_function
 
-# --- 4. 路由設定 ---
+# 直接從資料庫讀取數據供圖表使用 (不再需要 requests 抓網址)
+def get_local_chart_data():
+    weekly_seconds = {i: 0 for i in range(7)}
+    weekly_sessions = {i: [] for i in range(7)}
+    
+    today = datetime.now()
+    monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    sunday = monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
-# 健康檢查：解決 Render 部署超時問題
+    db = get_db()
+    rows = db.execute("SELECT * FROM NFCtag WHERE endtime IS NOT NULL").fetchall()
+    
+    fmt = '%Y-%m-%d %H:%M:%S'
+    for r in rows:
+        try:
+            start_dt = datetime.strptime(r['starttime'], fmt)
+            if monday <= start_dt <= sunday:
+                end_dt = datetime.strptime(r['endtime'], fmt)
+                diff = (end_dt - start_dt).total_seconds()
+                weekday = start_dt.weekday()
+                
+                weekly_seconds[weekday] += diff
+                weekly_sessions[weekday].append({
+                    'start': r['starttime'].split(' ')[1],
+                    'end': r['endtime'].split(' ')[1],
+                    'duration': format_duration(diff)
+                })
+        except: continue
+
+    hours_list = [round(weekly_seconds[i] / 3600, 1) for i in range(7)]
+    return hours_list, weekly_sessions
+
+# --- 3. 路由設定 ---
+
 @app.route('/healthz')
-def healthz():
-    return "OK", 200
+def healthz(): return "OK", 200
 
-# 首頁：增加 methods=['GET', 'POST'] 解決 Method Not Allowed 錯誤
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    return '<script>window.location.href="/view"</script>'
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if request.method == 'POST':
+        u, p = request.form.get('username', '').strip(), request.form.get('password', '')
+        success, msg = login_user(u, p)
+        if success:
+            session['username'] = u
+            return redirect(url_for('home'))
+        return render_template('login.html', error=msg)
+    return render_template('login.html')
 
+@app.route('/register', methods=['POST'])
+def register():
+    u, p, cp = request.form.get('username', '').strip(), request.form.get('password', ''), request.form.get('confirm_password', '')
+    if p != cp: return render_template('login.html', error='密碼不一致')
+    success, msg = register_user(u, p)
+    return render_template('login.html', success=msg if success else None, error=None if success else msg)
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('login_page'))
+
+# 遊戲首頁 (整合 NFC 圖表數據)
+@app.route('/')
+@login_required
+def home():
+    u = session['username']
+    xp = get_user_xp_by_username(u)
+    lvl = get_level(xp)
+    chart_data, sessions_data = get_local_chart_data()
+    return render_template('demo_baby_v4.html', username=u, xp=xp, level=lvl, 
+                           chart_data=chart_data, sessions_data=sessions_data)
+
+# NFC 更新介面 (給硬體或手機刷卡用)
 @app.route('/nfc_update', methods=['GET', 'POST'])
 def nfc_update():
-    # 同時支援 GET (?sno=xxx) 與 POST
     sno = request.args.get('sno') or request.form.get('sno')
     if not sno: return "Missing sno", 400
-    
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     db = get_db()
-    # 尋找是否有未完成的紀錄 (endtime IS NULL)
     active = db.execute("SELECT id FROM NFCtag WHERE serialno = ? AND endtime IS NULL", (sno,)).fetchone()
-    
     if active:
         db.execute("UPDATE NFCtag SET endtime = ? WHERE id = ?", (now, active['id']))
         msg = f"OK: {sno} Checked Out"
     else:
         db.execute("INSERT INTO NFCtag (serialno, starttime) VALUES (?, ?)", (sno, now))
         msg = f"OK: {sno} Checked In"
-    
     db.commit()
     return msg
 
+# 傳統表格檢視頁面
 @app.route('/view')
+@login_required
 def view():
     db = get_db()
     rows = db.execute("SELECT * FROM NFCtag ORDER BY id DESC LIMIT 50").fetchall()
     data = []
-    fmt = '%Y-%m-%d %H:%M:%S'
     for r in rows:
-        duration, cls = "-", "status-in"
+        duration = "-"
         if r['endtime']:
-            try:
-                diff = (datetime.strptime(r['endtime'], fmt) - datetime.strptime(r['starttime'], fmt)).total_seconds()
-                duration, cls = format_duration(diff), "status-done"
-            except:
-                pass
-        data.append({**dict(r), "duration": duration, "class": cls})
+            diff = (datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S') - 
+                    datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')).total_seconds()
+            duration = format_duration(diff)
+        data.append({**dict(r), "duration": duration})
+    return render_template_string("<h1>NFC Logs</h1><table border='1'>{% for i in data %}<tr><td>{{i.serialno}}</td><td>{{i.starttime}}</td><td>{{i.duration}}</td></tr>{% endfor %}</table>", data=data)
 
-    content = '''
-    <h2>NFC 即時監控</h2>
-    <table>
-        <tr><th>序號</th><th>開始</th><th>結束</th><th>耗時</th></tr>
-        {% for i in data %}
-        <tr class="{{ i.class }}">
-            <td>{{ i.serialno }}</td><td>{{ i.starttime }}</td>
-            <td>{{ i.endtime or '進行中...' }}</td><td><b>{{ i.duration }}</b></td>
-        </tr>
-        {% endfor %}
-    </table>
-    '''
-    return render_template_string(BASE_HTML.replace('{% block content %}{% endblock %}', content), data=data)
+# AI 掃描辨識
+@app.route('/scan', methods=['GET', 'POST'])
+@login_required
+def scan_page():
+    u = session['username']
+    remaining = get_remaining_uploads(u)
+    if request.method == 'POST':
+        can, count = can_upload_today(u)
+        if not can: return render_template('index.html', daily_limit_error=True, username=u, remaining_uploads=0, daily_limit=DAILY_UPLOAD_LIMIT)
+        file = request.files.get('file')
+        if file and file.filename:
+            path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(path)
+            img_hash = get_image_hash(path)
+            if is_duplicate_image_for_user(u, img_hash):
+                return render_template('index.html', duplicate_error=True, username=u, remaining_uploads=remaining, daily_limit=DAILY_UPLOAD_LIMIT)
+            increment_daily_upload(u)
+            item = recognize_item(path)
+            q, opt, ans, expl = generate_recycling_quiz(item)
+            session.update({'correct_answer': ans, 'explanation': expl, 'current_image_hash': img_hash})
+            return render_template('result.html', image_file=file.filename, item_result=item, question=q, options=opt, username=u)
+    return render_template('index.html', username=u, remaining_uploads=remaining, daily_limit=DAILY_UPLOAD_LIMIT)
 
-@app.route('/stat')
-def stat():
-    db = get_db()
-    rows = db.execute("SELECT starttime, endtime FROM NFCtag WHERE endtime IS NOT NULL").fetchall()
-    total_sec = 0
-    for r in rows:
-        try:
-            diff = (datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S') - datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')).total_seconds()
-            total_sec += diff
-        except:
-            pass
-            
-    content = f'''
-    <h2>數據統計</h2>
-    <div style="background: #e7f5ff; padding: 20px; border-radius: 8px;">
-        <p>已完成次數：<span style="font-size: 1.5em; color: #1c7ed6;">{len(rows)}</span></p>
-        <p>累計總工時：<span style="font-size: 1.5em; color: #d6336c;">{format_duration(total_sec)}</span></p>
-    </div>
-    <br><a href="/view">返回清單</a>
-    '''
-    return render_template_string(BASE_HTML.replace('{% block content %}{% endblock %}', content))
+@app.route('/submit_answer', methods=['POST'])
+@login_required
+def submit_answer():
+    u = session['username']
+    user_ans = request.json.get('answer', '').upper()
+    correct = session.get('correct_answer')
+    gained = XP_REWARD_CORRECT if user_ans == correct else XP_REWARD_WRONG
+    old_xp = get_user_xp_by_username(u)
+    new_xp = update_user_xp_by_username(u, gained)
+    img_hash = session.get('current_image_hash')
+    if img_hash: save_to_history_for_user(u, img_hash)
+    return jsonify({
+        'correct': user_ans == correct,
+        'gained_xp': gained,
+        'current_total_xp': new_xp,
+        'leveled_up': get_level(new_xp) > get_level(old_xp),
+        'new_level': get_level(new_xp),
+        'explanation': session.get('explanation'),
+        'correct_answer': correct
+    })
 
-# --- 5. 埠口綁定 (Render 關鍵) ---
+@app.route('/uploads/<filename>')
+def uploaded_file(filename): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
