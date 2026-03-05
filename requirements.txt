@@ -1,4 +1,7 @@
 flask
 gunicorn
-pillow
+sqlite3
 google-generativeai
+Pillow
+beautifulsoup4
+requests
