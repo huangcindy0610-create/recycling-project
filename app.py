@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, render_template
 import os
+from flask import Flask, request, jsonify, render_template
 from QA import process_image
 
 app = Flask(__name__)
@@ -14,7 +14,7 @@ def home():
     return render_template("index.html")
 
 
-# ===== 健康檢查（Render建議一定留著）=====
+# ===== 健康檢查 =====
 @app.route("/healthz")
 def healthz():
     return "ok"
@@ -25,7 +25,6 @@ def healthz():
 def analyze():
 
     try:
-
         if "image" not in request.files:
             return jsonify({
                 "status": "error",
@@ -50,14 +49,13 @@ def analyze():
         return jsonify(result)
 
     except Exception as e:
-
         return jsonify({
             "status": "error",
             "message": str(e)
         })
 
 
-# ===== Render 必須用這個 =====
+# ===== Render 啟動 =====
 if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 10000))
