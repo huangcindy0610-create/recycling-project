@@ -3,7 +3,7 @@ from flask import Flask, request, render_template, redirect, url_for, send_from_
 from datetime import datetime, timedelta
 from functools import wraps
 
-# 匯入整合後的自定義模組
+# 匯入自定義模組
 from QA import (recognize_item, generate_recycling_quiz, get_level, 
                 get_current_character, XP_REWARD_CORRECT, XP_REWARD_WRONG, get_image_hash)
 from auth import (register_user, login_user, get_user_xp_by_username, 
@@ -20,7 +20,7 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- 1. 資料庫輔助 ---
+# --- 1. 資料庫基礎 ---
 def get_db():
     if 'db' not in g:
         g.db = sqlite3.connect(DB_NAME, timeout=10)
@@ -37,43 +37,38 @@ def init_db():
         conn.execute('CREATE TABLE IF NOT EXISTS NFCtag (id INTEGER PRIMARY KEY AUTOINCREMENT, serialno TEXT NOT NULL, starttime TIMESTAMP, endtime TIMESTAMP)')
 init_db()
 
-# --- 2. 圖表數據連動邏輯 ---
+# --- 2. 數據計算 (連動圖表與彈窗) ---
 def get_local_chart_data():
-    """連動資料庫，產出長條圖時數與點擊後的詳細卡片資料"""
     weekly_seconds = {i: 0 for i in range(7)}
     weekly_sessions = {i: [] for i in range(7)}
-    today = datetime.now()
-    monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    
+    monday = (datetime.now() - timedelta(days=datetime.now().weekday())).replace(hour=0, minute=0, second=0)
     db = get_db()
     rows = db.execute("SELECT * FROM NFCtag WHERE endtime IS NOT NULL ORDER BY starttime ASC").fetchall()
-    
     for r in rows:
         try:
-            start_dt = datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')
-            if start_dt >= monday:
-                end_dt = datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S')
-                diff = (end_dt - start_dt).total_seconds()
-                weekday = start_dt.weekday()
-                
-                weekly_seconds[weekday] += diff
-                weekly_sessions[weekday].append({
+            sd = datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')
+            if sd >= monday:
+                diff = (datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S') - sd).total_seconds()
+                w = sd.weekday()
+                weekly_seconds[w] += diff
+                weekly_sessions[w].append({
                     'start': r['starttime'].split(' ')[1],
                     'end': r['endtime'].split(' ')[1],
                     'duration': f"{int(diff//3600):02}:{int((diff%3600)//60):02}:{int(diff%60):02}"
                 })
         except: continue
-    
-    hours_list = [round(weekly_seconds[i] / 3600, 2) for i in range(7)]
-    return hours_list, weekly_sessions
+    return [round(weekly_seconds[i] / 3600, 2) for i in range(7)], weekly_sessions
 
 # --- 3. 路由設定 ---
 def login_required(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
+    def decorated_function(*args, **kwargs):
         if 'username' not in session: return redirect(url_for('login_page'))
         return f(*args, **kwargs)
-    return decorated
+    return decorated_function
+
+@app.route('/healthz')
+def healthz(): return "OK", 200
 
 @app.route('/')
 @login_required
@@ -81,10 +76,9 @@ def home():
     u = session['username']
     xp = get_user_xp_by_username(u)
     lvl = get_level(xp)
-    title = get_current_character(lvl) # 連動稱號
-    chart_data, sessions_data = get_local_chart_data() # 連動數據
-    return render_template('demo_baby_v4.html', username=u, xp=xp, level=lvl, title=title, 
-                           chart_data=chart_data, sessions_data=sessions_data)
+    title = get_current_character(lvl) # 稱號連動
+    chart, sessions = get_local_chart_data() # 數據連動
+    return render_template('demo_baby_v4.html', username=u, xp=xp, level=lvl, title=title, chart_data=chart, sessions_data=sessions)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
@@ -119,14 +113,12 @@ def scan_page():
 @app.route('/submit_answer', methods=['POST'])
 @login_required
 def submit_answer():
-    user_ans = request.json.get('answer', '').upper()
-    correct = session.get('correct_answer')
-    gained = XP_REWARD_CORRECT if user_ans == correct else XP_REWARD_WRONG
+    ans = request.json.get('answer', '').upper()
+    gained = XP_REWARD_CORRECT if ans == session.get('correct_answer') else XP_REWARD_WRONG
     new_xp = update_user_xp_by_username(session['username'], gained)
-    # 存入歷史
     hash_val = session.get('current_image_hash')
     if hash_val: save_to_history_for_user(session['username'], hash_val)
-    return jsonify({'correct': user_ans == correct, 'gained_xp': gained, 'new_level': get_level(new_xp), 'explanation': session.get('explanation'), 'correct_answer': correct})
+    return jsonify({'correct': ans == session.get('correct_answer'), 'gained_xp': gained, 'new_level': get_level(new_xp), 'explanation': session.get('explanation'), 'correct_answer': session.get('correct_answer')})
 
 @app.route('/nfc_update')
 def nfc_update():
