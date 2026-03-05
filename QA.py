@@ -10,8 +10,13 @@ import hashlib
 MY_API_KEY = os.environ.get("GOOGLE_API_KEY", "AIzaSyDVv7Wt-S0e0G5rCXKiCR_6Iut1ZZFi58E")
 client = genai.Client(api_key=MY_API_KEY)
 
-# 【修正 404】使用最標準的模型識別碼
+# 修改 QA.py 中的這兩行
+# 嘗試使用最穩定的字串格式
 MODEL_NAME = "gemini-1.5-flash" 
+
+# 如果依然報 404，請嘗試替換為以下其中一個：
+# MODEL_NAME = "gemini-1.5-flash-latest" 
+# MODEL_NAME = "gemini-1.5-flash-001"
 
 # --- 🎮 遊戲平衡設定 ---
 XP_REWARD_CORRECT = 50
@@ -72,3 +77,4 @@ def generate_recycling_quiz(item_description: str):
         return q, o, a, e
     except:
         return "如何回收此物？", "(A)資源回收 (B)一般垃圾", "A", "請依規定回收。"
+
