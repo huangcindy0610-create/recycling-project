@@ -6,31 +6,28 @@
     <title>Baby Animation V4 - Reborn</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style_v4.css') }}">
     <style>
-        /* 強制還原 3s 動畫與角色圖 */
+        /* 強制還原 V4 動畫 */
         .cup-full { transition: clip-path 3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
         .character {
             background-image: url('{{ url_for("static", filename="baby.png") }}') !important;
             background-size: contain !important;
             background-repeat: no-repeat !important;
             background-position: bottom center !important;
-            transition: background-image 0.3s ease;
         }
         .character.cat { background-image: url('{{ url_for("static", filename="cat.png") }}') !important; }
         .character.fox { background-image: url('{{ url_for("static", filename="fox.png") }}') !important; }
         .char-clipper { bottom: 125px !important; }
         .character.jump { transform: translateY(1%) !important; opacity: 1; transition: transform 0.4s cubic-bezier(0.2, 1, 0.3, 1) !important; }
         
-        /* 截圖風格的詳細記錄卡片 */
+        /* 截圖風格歷史卡片 */
         .session-card { background: #FFFAF5; border-radius: 12px; padding: 15px; border: 1px solid #F0E0D0; margin-bottom: 12px; text-align: left; position: relative; }
-        .duration-tag { position: absolute; top: 10px; right: 10px; background: #5A3A29; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+        .duration-tag { position: absolute; top: 12px; right: 12px; background: #5A3A29; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; }
         .time-label { font-size: 14px; margin: 4px 0; }
         .green-arr { color: #4CAF50; font-weight: bold; }
         .red-arr { color: #E76F51; font-weight: bold; }
         
         .bubble.show-bubble { opacity: 1; transform: scale(1); transition: 0.5s; display: flex; flex-direction: column; align-items: center; }
         .scan-btn { background: #5A3A29; color: white !important; padding: 10px 20px; border-radius: 20px; text-decoration: none; margin-top: 10px; font-weight: bold; }
-        .nav-arrow-left { position: absolute; left: 5px; top: 55%; font-size: 30px; display: none; cursor: pointer; color: rgba(90, 58, 41, 0.6); }
-        .nav-arrow-left.show { display: block; }
     </style>
 </head>
 <body class="baby">
@@ -41,7 +38,6 @@
 
     <div class="app-container" onclick="play()" style="padding-top: 60px;">
         <div class="header-box">Reborn</div>
-        
         <div class="stats-box">
             <div class="exp-wrapper" style="width: 90%; margin: auto;">
                 <div class="exp-header" style="display: flex; justify-content: space-between; font-weight: bold;">
@@ -94,8 +90,6 @@
 
     <script>
         const sessionsData = {{ sessions_data | tojson | safe }};
-        const currentLevel = {{ level }};
-        
         function play() {
             const scene = document.querySelector('.scene');
             if (scene.classList.contains('active')) return;
@@ -106,8 +100,6 @@
                 document.getElementById('encourage-msg').innerText = "回收地球，我最拿手！✨";
             }, 3500);
         }
-
-        // 顯示後台詳細數據
         function showDayDetails(idx, name) {
             const list = document.getElementById('modal-list');
             document.getElementById('modal-title').innerText = `星期${name} 使用記錄`;
@@ -123,8 +115,9 @@
             document.getElementById('day-modal').classList.add('show');
         }
 
-        // 角色切換邏輯
+        // 角色管理與切換
         let charIdx = parseInt(localStorage.getItem('charIdx')) || 0;
+        const currentLevel = {{ level }};
         const chars = ['baby', 'cat', 'fox'], unlockLvls = [0, 5, 10];
         function applyChar() {
             const c = document.querySelector('.character');
