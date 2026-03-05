@@ -1,4 +1,6 @@
-import sqlite3, os, sys
+import sqlite3
+import os
+import sys
 from flask import Flask, request, render_template, redirect, url_for, send_from_directory, session, jsonify, g
 from datetime import datetime, timedelta
 from functools import wraps
@@ -12,6 +14,7 @@ from auth import (register_user, login_user, get_user_xp_by_username,
                   get_remaining_uploads, DAILY_UPLOAD_LIMIT)
 
 app = Flask(__name__)
+# 建議將此 key 設為固定字串，避免部署時自動登出
 app.secret_key = os.environ.get('SECRET_KEY', 'reborn_secret_key_2026')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,15 +33,24 @@ def get_db():
 @app.teardown_appcontext
 def close_db(e):
     db = g.pop('db', None)
-    if db is not None: db.close()
+    if db is not None:
+        db.close()
 
 def init_db():
     with sqlite3.connect(DB_NAME) as conn:
-        conn.execute('CREATE TABLE IF NOT EXISTS NFCtag (id INTEGER PRIMARY KEY AUTOINCREMENT, serialno TEXT NOT NULL, starttime TIMESTAMP, endtime TIMESTAMP)')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS NFCtag (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                serialno TEXT NOT NULL, 
+                starttime TIMESTAMP, 
+                endtime TIMESTAMP
+            )
+        ''')
 init_db()
 
 # --- 2. 數據計算 (連動圖表與彈窗) ---
 def get_local_chart_data():
+    """連動資料庫，產出長條圖時數與點擊後的詳細卡片資料"""
     weekly_seconds = {i: 0 for i in range(7)}
     weekly_sessions = {i: [] for i in range(7)}
     monday = (datetime.now() - timedelta(days=datetime.now().weekday())).replace(hour=0, minute=0, second=0)
@@ -59,16 +71,21 @@ def get_local_chart_data():
         except: continue
     return [round(weekly_seconds[i] / 3600, 2) for i in range(7)], weekly_sessions
 
-# --- 3. 路由設定 ---
+# --- 3. 權限檢查器 ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'username' not in session: return redirect(url_for('login_page'))
+        if 'username' not in session:
+            return redirect(url_for('login_page'))
         return f(*args, **kwargs)
     return decorated_function
 
+# --- 4. 路由設定 ---
+
+# 【重要】Render 健康檢查路由
 @app.route('/healthz')
-def healthz(): return "OK", 200
+def healthz():
+    return "OK", 200
 
 @app.route('/')
 @login_required
@@ -84,9 +101,12 @@ def home():
 def login_page():
     if request.method == 'POST':
         u, p = request.form.get('username', '').strip(), request.form.get('password', '')
-        if login_user(u, p)[0]:
+        # login_user 回傳 (True/False, message)
+        res = login_user(u, p)
+        if res[0]:
             session['username'] = u
             return redirect(url_for('home'))
+        return render_template('login.html', error=res[1])
     return render_template('login.html')
 
 @app.route('/logout')
@@ -114,26 +134,39 @@ def scan_page():
 @login_required
 def submit_answer():
     ans = request.json.get('answer', '').upper()
-    gained = XP_REWARD_CORRECT if ans == session.get('correct_answer') else XP_REWARD_WRONG
+    correct = session.get('correct_answer')
+    gained = XP_REWARD_CORRECT if ans == correct else XP_REWARD_WRONG
     new_xp = update_user_xp_by_username(session['username'], gained)
     hash_val = session.get('current_image_hash')
     if hash_val: save_to_history_for_user(session['username'], hash_val)
-    return jsonify({'correct': ans == session.get('correct_answer'), 'gained_xp': gained, 'new_level': get_level(new_xp), 'explanation': session.get('explanation'), 'correct_answer': session.get('correct_answer')})
+    
+    return jsonify({
+        'correct': ans == correct, 
+        'gained_xp': gained, 
+        'new_level': get_level(new_xp), 
+        'explanation': session.get('explanation'), 
+        'correct_answer': correct
+    })
 
 @app.route('/nfc_update')
 def nfc_update():
     sno = request.args.get('sno')
+    if not sno: return "Missing sno", 400
     db = get_db()
     active = db.execute("SELECT id FROM NFCtag WHERE serialno = ? AND endtime IS NULL", (sno,)).fetchone()
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    if active: db.execute("UPDATE NFCtag SET endtime = ? WHERE id = ?", (now, active['id']))
-    else: db.execute("INSERT INTO NFCtag (serialno, starttime) VALUES (?, ?)", (sno, now))
+    if active:
+        db.execute("UPDATE NFCtag SET endtime = ? WHERE id = ?", (now, active['id']))
+    else:
+        db.execute("INSERT INTO NFCtag (serialno, starttime) VALUES (?, ?)", (sno, now))
     db.commit()
     return "OK"
 
 @app.route('/uploads/<filename>')
-def uploaded_file(filename): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+# --- 5. 啟動設定 ---
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
