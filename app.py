@@ -6,14 +6,14 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# 使用絕對路徑確保資料庫位置正確
+# 使用絕對路徑，確保 Render 環境路徑正確
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, "NFCtag.db")
 
 # --- 1. 資料庫基礎設定 ---
 def get_db():
     if 'db' not in g:
-        # 增加 timeout 防止資料庫鎖定
+        # 增加 timeout 防止資料庫鎖定 (Locked)
         g.db = sqlite3.connect(DB_NAME, timeout=10)
         g.db.row_factory = sqlite3.Row
     return g.db
@@ -24,7 +24,7 @@ def close_db(e):
     if db is not None:
         db.close()
 
-# --- 2. 初始化功能 (確保在生產環境中也能運行) ---
+# --- 2. 初始化功能 (確保在生產環境啟動即執行) ---
 def init_db():
     try:
         print(f"--- 系統啟動：檢查資料庫於 {DB_NAME} ---")
@@ -42,8 +42,8 @@ def init_db():
         print("--- 資料庫初始化成功 ---")
     except Exception as e:
         print(f"--- 資料庫初始化失敗: {str(e)} ---")
-        # 這裡不退出，讓 Flask 嘗試啟動以便查看錯誤日誌
 
+# 程式載入時立即執行
 init_db()
 
 def format_duration(seconds):
@@ -81,21 +81,25 @@ BASE_HTML = '''
 
 # --- 4. 路由設定 ---
 
+# 健康檢查：解決 Render 部署超時問題
 @app.route('/healthz')
 def healthz():
     return "OK", 200
 
-@app.route('/')
+# 首頁：增加 methods=['GET', 'POST'] 解決 Method Not Allowed 錯誤
+@app.route('/', methods=['GET', 'POST'])
 def index():
     return '<script>window.location.href="/view"</script>'
 
-@app.route('/nfc_update', methods=['GET'])
+@app.route('/nfc_update', methods=['GET', 'POST'])
 def nfc_update():
-    sno = request.args.get('sno')
+    # 同時支援 GET (?sno=xxx) 與 POST
+    sno = request.args.get('sno') or request.form.get('sno')
     if not sno: return "Missing sno", 400
     
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     db = get_db()
+    # 尋找是否有未完成的紀錄 (endtime IS NULL)
     active = db.execute("SELECT id FROM NFCtag WHERE serialno = ? AND endtime IS NULL", (sno,)).fetchone()
     
     if active:
@@ -156,11 +160,11 @@ def stat():
         <p>已完成次數：<span style="font-size: 1.5em; color: #1c7ed6;">{len(rows)}</span></p>
         <p>累計總工時：<span style="font-size: 1.5em; color: #d6336c;">{format_duration(total_sec)}</span></p>
     </div>
+    <br><a href="/view">返回清單</a>
     '''
     return render_template_string(BASE_HTML.replace('{% block content %}{% endblock %}', content))
 
 # --- 5. 埠口綁定 (Render 關鍵) ---
 if __name__ == '__main__':
-    # 這裡確保本地執行時也能運作
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
