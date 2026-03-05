@@ -4,13 +4,16 @@ from flask import Flask, request, render_template_string, g
 from datetime import datetime
 
 app = Flask(__name__)
-# 確保資料庫路徑在 Render 上運作正常
-DB_NAME = os.path.join(os.getcwd(), "NFCtag.db")
 
-# --- 資料庫工具 ---
+# 使用絕對路徑，避免 Render 環境路徑混亂
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_NAME = os.path.join(BASE_DIR, "NFCtag.db")
+
+# --- 1. 資料庫基礎設定 ---
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_NAME)
+        # 增加 timeout 防止資料庫鎖定
+        g.db = sqlite3.connect(DB_NAME, timeout=10)
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -20,8 +23,9 @@ def close_db(e):
     if db is not None:
         db.close()
 
+# --- 2. 強制初始化功能 (放在全域，確保 gunicorn 啟動時也會執行) ---
 def init_db():
-    """初始化資料庫表格"""
+    print(f"Checking database at: {DB_NAME}")
     with sqlite3.connect(DB_NAME) as conn:
         conn.execute('''
             CREATE TABLE IF NOT EXISTS NFCtag (
@@ -33,7 +37,7 @@ def init_db():
         ''')
         conn.commit()
 
-# 在程式啟動時立即執行初始化 (解決 Render/Gunicorn 啟動問題)
+# 程式載入時立即執行
 init_db()
 
 def format_duration(seconds):
@@ -41,7 +45,7 @@ def format_duration(seconds):
     seconds = int(seconds)
     return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
 
-# --- 樣式與導覽 ---
+# --- 3. HTML 模板 ---
 BASE_HTML = '''
 <!DOCTYPE html>
 <html>
@@ -58,24 +62,19 @@ BASE_HTML = '''
         th { background: #f8f9fa; }
         .status-in { background-color: #fff9db; }
         .status-done { background-color: #ebfbee; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
-        <nav>
-            <a href="/view">📋 即時清單</a>
-            <a href="/stat">📊 統計數據</a>
-        </nav>
+        <nav><a href="/view">📋 即時清單</a><a href="/stat">📊 統計數據</a></nav>
         {% block content %}{% endblock %}
     </div>
 </body>
 </html>
 '''
 
-# --- 路由 ---
+# --- 4. 路由設定 ---
 
-# 1. 新增：健康檢查路由，解決 Render 404 Health Check 報錯
 @app.route('/healthz')
 def healthz():
     return "OK", 200
@@ -91,6 +90,7 @@ def nfc_update():
     
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     db = get_db()
+    # 尋找是否有未完成的紀錄
     active = db.execute("SELECT id FROM NFCtag WHERE serialno = ? AND endtime IS NULL", (sno,)).fetchone()
     
     if active:
@@ -110,12 +110,10 @@ def view():
     data = []
     fmt = '%Y-%m-%d %H:%M:%S'
     for r in rows:
-        duration = "-"
-        cls = "status-in"
+        duration, cls = "-", "status-in"
         if r['endtime']:
             diff = (datetime.strptime(r['endtime'], fmt) - datetime.strptime(r['starttime'], fmt)).total_seconds()
-            duration = format_duration(diff)
-            cls = "status-done"
+            duration, cls = format_duration(diff), "status-done"
         data.append({**dict(r), "duration": duration, "class": cls})
 
     content = '''
@@ -147,7 +145,7 @@ def stat():
     '''
     return render_template_string(BASE_HTML.replace('{% block content %}{% endblock %}', content))
 
+# 本地調試用
 if __name__ == '__main__':
-    # Render 會自動分配 PORT，若沒有則預設 8000
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
