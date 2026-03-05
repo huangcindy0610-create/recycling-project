@@ -1,11 +1,11 @@
 import sqlite3
 import os
 import sys
-from flask import Flask, request, render_template, redirect, url_for, send_from_directory, session, jsonify, g
+from flask import Flask, request, render_template, redirect, url_for, send_from_directory, session, jsonify, g, render_template_string
 from datetime import datetime, timedelta, date
 from functools import wraps
 
-# 匯入你的自定義模組
+# 匯入自定義模組 (請確保 QA.py 和 auth.py 在同一目錄)
 from QA import recognize_item, generate_recycling_quiz, get_level, XP_REWARD_CORRECT, XP_REWARD_WRONG, get_image_hash
 from auth import (register_user, login_user, get_user_xp_by_username, 
                   update_user_xp_by_username, is_duplicate_image_for_user, 
@@ -13,6 +13,7 @@ from auth import (register_user, login_user, get_user_xp_by_username,
                   get_remaining_uploads, DAILY_UPLOAD_LIMIT)
 
 app = Flask(__name__)
+# 建議在 Render Environment 設定 SECRET_KEY，否則每次部署都會登出使用者
 app.secret_key = os.environ.get('SECRET_KEY', 'reborn_secret_key_888')
 
 # --- 路徑設定 ---
@@ -36,16 +37,19 @@ def close_db(e):
         db.close()
 
 def init_db():
-    with sqlite3.connect(DB_NAME) as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS NFCtag (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                serialno TEXT NOT NULL,
-                starttime TIMESTAMP,
-                endtime TIMESTAMP
-            )
-        ''')
-    print("--- 資料庫初始化完成 ---")
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS NFCtag (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    serialno TEXT NOT NULL,
+                    starttime TIMESTAMP,
+                    endtime TIMESTAMP
+                )
+            ''')
+        print("--- [OK] 資料庫初始化完成 ---")
+    except Exception as e:
+        print(f"--- [Error] 資料庫初始化失敗: {e} ---")
 
 init_db()
 
@@ -63,8 +67,8 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# 直接從資料庫讀取數據供圖表使用 (不再需要 requests 抓網址)
 def get_local_chart_data():
+    """直接從本地資料庫計算本週數據，供小嬰兒圖表使用"""
     weekly_seconds = {i: 0 for i in range(7)}
     weekly_sessions = {i: [] for i in range(7)}
     
@@ -72,25 +76,27 @@ def get_local_chart_data():
     monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     sunday = monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
-    db = get_db()
-    rows = db.execute("SELECT * FROM NFCtag WHERE endtime IS NOT NULL").fetchall()
-    
-    fmt = '%Y-%m-%d %H:%M:%S'
-    for r in rows:
-        try:
-            start_dt = datetime.strptime(r['starttime'], fmt)
-            if monday <= start_dt <= sunday:
-                end_dt = datetime.strptime(r['endtime'], fmt)
-                diff = (end_dt - start_dt).total_seconds()
-                weekday = start_dt.weekday()
-                
-                weekly_seconds[weekday] += diff
-                weekly_sessions[weekday].append({
-                    'start': r['starttime'].split(' ')[1],
-                    'end': r['endtime'].split(' ')[1],
-                    'duration': format_duration(diff)
-                })
-        except: continue
+    try:
+        db = get_db()
+        rows = db.execute("SELECT * FROM NFCtag WHERE endtime IS NOT NULL").fetchall()
+        
+        fmt = '%Y-%m-%d %H:%M:%S'
+        for r in rows:
+            try:
+                start_dt = datetime.strptime(r['starttime'], fmt)
+                if monday <= start_dt <= sunday:
+                    end_dt = datetime.strptime(r['endtime'], fmt)
+                    diff = (end_dt - start_dt).total_seconds()
+                    weekday = start_dt.weekday()
+                    
+                    weekly_seconds[weekday] += diff
+                    weekly_sessions[weekday].append({
+                        'start': r['starttime'].split(' ')[1],
+                        'end': r['endtime'].split(' ')[1],
+                        'duration': format_duration(diff)
+                    })
+            except: continue
+    except: pass
 
     hours_list = [round(weekly_seconds[i] / 3600, 1) for i in range(7)]
     return hours_list, weekly_sessions
@@ -100,10 +106,12 @@ def get_local_chart_data():
 @app.route('/healthz')
 def healthz(): return "OK", 200
 
+# 登入頁面
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
     if request.method == 'POST':
-        u, p = request.form.get('username', '').strip(), request.form.get('password', '')
+        u = request.form.get('username', '').strip()
+        p = request.form.get('password', '')
         success, msg = login_user(u, p)
         if success:
             session['username'] = u
@@ -113,7 +121,9 @@ def login_page():
 
 @app.route('/register', methods=['POST'])
 def register():
-    u, p, cp = request.form.get('username', '').strip(), request.form.get('password', ''), request.form.get('confirm_password', '')
+    u = request.form.get('username', '').strip()
+    p = request.form.get('password', '')
+    cp = request.form.get('confirm_password', '')
     if p != cp: return render_template('login.html', error='密碼不一致')
     success, msg = register_user(u, p)
     return render_template('login.html', success=msg if success else None, error=None if success else msg)
@@ -123,18 +133,23 @@ def logout():
     session.pop('username', None)
     return redirect(url_for('login_page'))
 
-# 遊戲首頁 (整合 NFC 圖表數據)
+# 【重點】遊戲首頁：這裡渲染 demo_baby_v4.html
 @app.route('/')
 @login_required
 def home():
     u = session['username']
     xp = get_user_xp_by_username(u)
     lvl = get_level(xp)
+    # 獲取本週數據
     chart_data, sessions_data = get_local_chart_data()
-    return render_template('demo_baby_v4.html', username=u, xp=xp, level=lvl, 
-                           chart_data=chart_data, sessions_data=sessions_data)
+    return render_template('demo_baby_v4.html', 
+                           username=u, 
+                           xp=xp, 
+                           level=lvl, 
+                           chart_data=chart_data, 
+                           sessions_data=sessions_data)
 
-# NFC 更新介面 (給硬體或手機刷卡用)
+# NFC 更新介面：給硬體/手機刷卡觸發用
 @app.route('/nfc_update', methods=['GET', 'POST'])
 def nfc_update():
     sno = request.args.get('sno') or request.form.get('sno')
@@ -151,10 +166,10 @@ def nfc_update():
     db.commit()
     return msg
 
-# 傳統表格檢視頁面
+# 數據後台：如果你想看表格，請手動輸入 網址/view
 @app.route('/view')
 @login_required
-def view():
+def view_logs():
     db = get_db()
     rows = db.execute("SELECT * FROM NFCtag ORDER BY id DESC LIMIT 50").fetchall()
     data = []
@@ -165,9 +180,15 @@ def view():
                     datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')).total_seconds()
             duration = format_duration(diff)
         data.append({**dict(r), "duration": duration})
-    return render_template_string("<h1>NFC Logs</h1><table border='1'>{% for i in data %}<tr><td>{{i.serialno}}</td><td>{{i.starttime}}</td><td>{{i.duration}}</td></tr>{% endfor %}</table>", data=data)
+    
+    # 這裡回傳一個簡單的表格 HTML
+    table_html = "<h2>NFC 數據紀錄</h2><table border='1'><tr><th>序號</th><th>開始</th><th>結束</th><th>時長</th></tr>"
+    for i in data:
+        table_html += f"<tr><td>{i['serialno']}</td><td>{i['starttime']}</td><td>{i['endtime'] or '...'}</td><td>{i['duration']}</td></tr>"
+    table_html += "</table><br><a href='/'>返回遊戲</a>"
+    return table_html
 
-# AI 掃描辨識
+# AI 掃描與問答
 @app.route('/scan', methods=['GET', 'POST'])
 @login_required
 def scan_page():
