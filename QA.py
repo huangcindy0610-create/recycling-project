@@ -7,17 +7,13 @@ import hashlib
 # ==========================================
 # 設定與初始化
 # ==========================================
-# 優先讀取 Render 環境變數中的 Key
 MY_API_KEY = os.environ.get("GOOGLE_API_KEY", "AIzaSyDVv7Wt-S0e0G5rCXKiCR_6Iut1ZZFi58E")
-
-# 建立客戶端
 client = genai.Client(api_key=MY_API_KEY)
 
-# 【關鍵修正】在某些 SDK 版本中，模型名稱需要加上 'models/' 前綴或保持純淨
-# 如果 gemini-1.5-flash 報 404，這裡改用最標準的字串
+# 【修正 404】使用最標準的模型識別碼
 MODEL_NAME = "gemini-1.5-flash" 
 
-# --- 🎮 遊戲平衡設定 (補齊變數防止 app.py 崩潰) ---
+# --- 🎮 遊戲平衡設定 ---
 XP_REWARD_CORRECT = 50
 XP_REWARD_WRONG = 10
 XP_PER_LEVEL = 50
@@ -55,32 +51,17 @@ def get_current_character(level: int) -> str:
     return CHARACTERS[0]
 
 def recognize_item(image_path: str) -> str:
-    """AI 辨識 - 增加容錯處理"""
     try:
-        if not os.path.exists(image_path):
-            return "錯誤：找不到圖片檔案"
-        
         image = Image.open(image_path)
-        prompt = "請辨識圖片中袋子裡的物品。用繁體中文簡潔回答：物品名稱、物品材質。不要使用符號。"
-        
-        # 修正：確保調用時不帶多餘的 API 版本前綴
-        response = client.models.generate_content(
-            model=MODEL_NAME, 
-            contents=[prompt, image]
-        )
+        prompt = "請辨識袋子裡的物品(忽略袋子本身)。用繁體中文簡潔回答：物品可能是: (名稱) 物品材質: (材質)。注意：直接回答，不要符號。"
+        response = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
         return response.text
     except Exception as e:
-        # 如果 1.5-flash 還是失敗，嘗試備用方案
-        return f"AI 辨識暫時無法連線，請檢查 API Key 權限。({str(e)})"
+        return f"AI 辨識暫時忙碌中，請檢查 API Key。({str(e)})"
 
 def generate_recycling_quiz(item_description: str):
-    prompt = f"""根據此物品設計回收選擇題：{item_description}
-    格式：
-    QUESTION_START 題目內容 QUESTION_END
-    OPTIONS_START (A)... (B)... (C)... (D)... OPTIONS_END
-    ANSWER_START A ANSWER_END
-    EXPLANATION_START 解說內容 EXPLANATION_END"""
-
+    rules = "1.容器類倒空沖洗壓扁 2.乾電池單獨回收 3.五大電器完整 4.資訊物品不拆解 5.照明防破 6.農藥三沖三洗 7.碎玻璃包覆。"
+    prompt = f"根據規定出題：{rules}\n物品：{item_description}\n格式：QUESTION_START 題目 QUESTION_END OPTIONS_START (A)... (B)... OPTIONS_END ANSWER_START A ANSWER_END EXPLANATION_START 解說 EXPLANATION_END"
     try:
         response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
         text = response.text
@@ -90,4 +71,4 @@ def generate_recycling_quiz(item_description: str):
         e = re.search(r'EXPLANATION_START\s*(.*?)\s*EXPLANATION_END', text, re.DOTALL).group(1).strip()
         return q, o, a, e
     except:
-        return "此物品如何回收？", "(A)回收 (B)垃圾", "A", "請依規定回收。"
+        return "如何回收此物？", "(A)資源回收 (B)一般垃圾", "A", "請依規定回收。"
