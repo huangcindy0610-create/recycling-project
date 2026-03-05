@@ -7,9 +7,12 @@ import hashlib
 # ==========================================
 # 設定與初始化
 # ==========================================
+# 優先讀取 Render 環境變數中的 Key
 MY_API_KEY = os.environ.get("GOOGLE_API_KEY", "AIzaSyDVv7Wt-S0e0G5rCXKiCR_6Iut1ZZFi58E")
 client = genai.Client(api_key=MY_API_KEY)
-MODEL_NAME = "gemini-1.5-flash"  # 使用穩定版
+
+# 【修正】1.5-flash 是目前最穩定的圖片辨識模型
+MODEL_NAME = "gemini-1.5-flash" 
 
 # --- 🎮 遊戲平衡設定 ---
 XP_REWARD_CORRECT = 50
@@ -38,10 +41,12 @@ def get_image_hash(image_path: str) -> str:
     return sha256_hash.hexdigest()
 
 def get_level(xp: int) -> int:
+    """計算等級 (每 50 XP 升一級)"""
     if xp is None: xp = 0
     return (xp // XP_PER_LEVEL)
 
 def get_current_character(level: int) -> str:
+    """根據目前等級取得對應的角色稱號"""
     unlocked_levels = sorted(CHARACTERS.keys(), reverse=True)
     for unlock_lvl in unlocked_levels:
         if level >= unlock_lvl:
@@ -50,23 +55,27 @@ def get_current_character(level: int) -> str:
 
 def recognize_item(image_path: str) -> str:
     try:
+        if not os.path.exists(image_path):
+            return "錯誤：找不到圖片檔案"
         image = Image.open(image_path)
-        prompt = """請辨識袋子裡的物品(忽略袋子)。用繁體中文簡潔回答：
+        prompt = """請仔細觀察圖片，辨識袋子裡面放著的物品。
+        請針對「物品」用繁體中文簡潔回答：
         物品可能是: (名稱)
         物品材質: (材質)
-        注意：直接回答即可，不要使用符號。"""
+        注意：不要使用符號，直接回答即可。"""
         response = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
         return response.text
     except Exception as e:
-        return f"辨識失敗: {str(e)}"
+        return f"AI 辨識暫時忙碌中: {str(e)}"
 
 def generate_recycling_quiz(item_description: str):
-    rules = "1.容器(鐵鋁玻璃塑膠紙)倒空沖洗壓扁 2.乾電池單獨回收 3.五大電器/資訊物品保持完整 4.照明光源防破 5.農藥三沖三洗 6.碎玻璃包覆標記。"
-    prompt = f"""根據規定出題：{rules}\n物品描述：{item_description}\n格式必須嚴格遵守：
+    recycling_rules = "1.容器類(鐵鋁玻璃塑膠紙)倒空沖洗壓扁 2.乾電池單獨回收 3.五大電器/資訊物品保持完整 4.照明光源防破碎 5.農藥三沖三洗 6.碎玻璃包覆註明。"
+    prompt = f"""根據規定出題：{recycling_rules}\n物品：{item_description}\n格式嚴格遵守：
     QUESTION_START 題目內容 QUESTION_END
     OPTIONS_START (A)... (B)... (C)... (D)... OPTIONS_END
     ANSWER_START A ANSWER_END
     EXPLANATION_START 解說內容(兩句內) EXPLANATION_END"""
+
     try:
         response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
         text = response.text
@@ -76,4 +85,4 @@ def generate_recycling_quiz(item_description: str):
         e = re.search(r'EXPLANATION_START\s*(.*?)\s*EXPLANATION_END', text, re.DOTALL).group(1).strip()
         return q, o, a, e
     except:
-        return "如何回收此物？", "(A)資源回收 (B)一般垃圾", "B", "請依規定回收。"
+        return "此物品該如何回收？", "(A)資源回收 (B)一般垃圾", "A", "請依照當地環保規定處理。"
