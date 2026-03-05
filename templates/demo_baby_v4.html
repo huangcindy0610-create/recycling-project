@@ -6,28 +6,32 @@
     <title>Baby Animation V4 - Reborn</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style_v4.css') }}">
     <style>
-        /* 核心樣式修正 */
+        /* --- 核心動畫還原 --- */
+        .cup-full { transition: clip-path 3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
         .character {
             background-image: url('{{ url_for("static", filename="baby.png") }}') !important;
             background-size: contain !important;
             background-repeat: no-repeat !important;
             background-position: bottom center !important;
+            transition: background-image 0.3s ease;
         }
         .character.cat { background-image: url('{{ url_for("static", filename="cat.png") }}') !important; }
         .character.fox { background-image: url('{{ url_for("static", filename="fox.png") }}') !important; }
         .char-clipper { bottom: 125px !important; }
-        .active .character { transition-delay: 0s !important; transform: translateY(120%); }
         .character.jump { transform: translateY(1%) !important; opacity: 1; transition: transform 0.4s cubic-bezier(0.2, 1, 0.3, 1) !important; }
-        .bubble.show-bubble { opacity: 1; transform: scale(1); transition: 0.5s; display: flex; flex-direction: column; align-items: center; }
-
-        /* 歷史記錄卡片風格 (依照截圖) */
-        .session-card { background: #FFFAF5; border-radius: 12px; padding: 15px; border: 1px solid #F0E0D0; margin-bottom: 12px; text-align: left; position: relative; }
-        .duration-tag { position: absolute; top: 10px; right: 10px; background: #5A3A29; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-        .time-label { font-size: 14px; margin: 4px 0; }
-        .green-arrow { color: #4CAF50; font-weight: bold; }
-        .red-arrow { color: #E76F51; font-weight: bold; }
         
-        .modal-btn { background: #5A3A29 !important; color: white !important; border-radius: 20px !important; padding: 10px 30px !important; }
+        /* --- 截圖風格歷史紀錄卡片 --- */
+        .session-card { background: #FFFAF5; border-radius: 12px; padding: 15px; border: 1px solid #F0E0D0; margin-bottom: 12px; text-align: left; position: relative; }
+        .duration-tag { position: absolute; top: 12px; right: 12px; background: #5A3A29; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+        .time-label { font-size: 14px; margin: 5px 0; color: #333; }
+        .green-arr { color: #4CAF50; font-weight: bold; margin-right: 5px; }
+        .red-arr { color: #E76F51; font-weight: bold; margin-right: 5px; }
+        
+        /* --- UI 輔助 --- */
+        .bubble.show-bubble { opacity: 1; transform: scale(1); transition: 0.5s; display: flex; flex-direction: column; align-items: center; }
+        .scan-btn { background: #5A3A29; color: white !important; padding: 8px 20px; border-radius: 20px; text-decoration: none; margin-top: 10px; font-weight: bold; font-size: 16px; }
+        .nav-arrow-left { position: absolute; left: 5px; top: 55%; font-size: 30px; display: none; cursor: pointer; color: rgba(90, 58, 41, 0.6); }
+        .nav-arrow-left.show { display: block; }
     </style>
 </head>
 <body class="baby">
@@ -39,12 +43,12 @@
     <div class="app-container" onclick="play()" style="padding-top: 60px;">
         <div class="header-box">Reborn</div>
         <div class="stats-box">
-            <div class="exp-wrapper">
+            <div class="exp-wrapper" style="width: 90%; margin: auto;">
                 <div class="exp-header" style="display: flex; justify-content: space-between; font-weight: bold;">
                     <span>我的經驗值 (EXP)</span>
                     <span style="color:#FF9800;">Lvl. {{ level }}</span>
                 </div>
-                <div style="background:#eee; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="background:#eee; height:12px; border-radius:6px; overflow:hidden; margin-top:5px;">
                     <div id="exp-fill" style="width:{{ (xp % 50 / 50 * 100) }}%; height:100%; background:linear-gradient(90deg, #FFC107, #FF9800);"></div>
                 </div>
             </div>
@@ -57,11 +61,11 @@
         </div>
 
         <div class="bubble">
-            <span id="encourage-msg">點我開始回收冒險！</span>
-            <a href="/scan" style="background:#5A3A29; color:white; padding:8px 15px; border-radius:20px; text-decoration:none; margin-top:10px; font-weight:bold;">📷 拍照挑戰</a>
+            <span id="encourage-msg">準備好進行回收挑戰了嗎？</span>
+            <a href="/scan" class="scan-btn" onclick="event.stopPropagation();">📷 拍照挑戰</a>
         </div>
 
-        <div class="chart-title-outer">本週咖啡時光 (小時)</div>
+        <div class="chart-title-outer" style="margin-top:20px; text-align:center; font-weight:bold; color:#5A3A29;">本週咖啡時光 (小時)</div>
         <div class="chart-box">
             <div class="chart-y-axis"><span>6h</span><span>4h</span><span>2h</span><span>0h</span></div>
             <div class="chart-content">
@@ -75,13 +79,16 @@
                 </div>
             </div>
         </div>
+
+        <div class="nav-arrow-left" id="nav-arrow-left" onclick="event.stopPropagation(); goBack()">&#10094;</div>
+        <div class="nav-arrow" onclick="event.stopPropagation(); goForward()" style="position:absolute; right:15px; top:55%; font-size:30px; cursor:pointer; color: rgba(90, 58, 41, 0.6);">&#10095;</div>
     </div>
 
     <div class="modal-overlay" id="day-modal" onclick="this.classList.remove('show')">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:320px;">
             <h3 id="modal-title">📅 使用記錄</h3>
             <div id="modal-list" style="max-height:300px; overflow-y:auto; margin: 15px 0;"></div>
-            <button class="modal-btn" onclick="document.getElementById('day-modal').classList.remove('show')">關閉</button>
+            <button class="modal-btn" style="background:#5A3A29; color:white; border:none; padding:10px 30px; border-radius:20px; cursor:pointer;" onclick="document.getElementById('day-modal').classList.remove('show')">關閉</button>
         </div>
     </div>
 
@@ -94,7 +101,7 @@
             setTimeout(() => document.querySelector('.character').classList.add('jump'), 2950);
             setTimeout(() => {
                 document.querySelector('.bubble').classList.add('show-bubble');
-                document.getElementById('encourage-msg').innerText = "今天要一起做回收嗎？";
+                document.getElementById('encourage-msg').innerText = "回收地球，我最拿手！✨";
             }, 3500);
         }
         function showDayDetails(idx, name) {
@@ -105,12 +112,29 @@
                 <div class="session-card">
                     <span style="color:#888; font-size:12px;">第 ${i+1} 次</span>
                     <div class="duration-tag">${s.duration}</div>
-                    <div class="time-label"><span class="green-arrow">▸ 開始</span> ${s.start}</div>
-                    <div class="time-label"><span class="red-arrow">◂ 結束</span> ${s.end}</div>
+                    <div class="time-label"><span class="green-arr">▸ 開始</span> ${s.start}</div>
+                    <div class="time-label"><span class="red-arr">◂ 結束</span> ${s.end}</div>
                 </div>
             `).join('') : "今天還沒有紀錄喔～ 📭";
             document.getElementById('day-modal').classList.add('show');
         }
+
+        // 角色管理
+        let charIdx = parseInt(localStorage.getItem('charIdx')) || 0;
+        const currentLevel = {{ level }};
+        const chars = ['baby', 'cat', 'fox'], unlockLvls = [0, 5, 10];
+        function applyChar() {
+            const c = document.querySelector('.character');
+            c.classList.remove('cat', 'fox');
+            if(chars[charIdx] !== 'baby') c.classList.add(chars[charIdx]);
+            document.getElementById('nav-arrow-left').classList.toggle('show', charIdx > 0);
+        }
+        function goForward() {
+            if (charIdx < 2 && currentLevel >= unlockLvls[charIdx+1]) { charIdx++; localStorage.setItem('charIdx', charIdx); applyChar(); }
+            else if (charIdx < 2) alert(`還差一點點！Lv.${unlockLvls[charIdx+1]} 即可解鎖夥伴！`);
+        }
+        function goBack() { if(charIdx > 0) { charIdx--; localStorage.setItem('charIdx', charIdx); applyChar(); } }
+        window.onload = applyChar;
     </script>
 </body>
 </html>
