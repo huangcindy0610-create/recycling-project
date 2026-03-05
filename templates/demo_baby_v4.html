@@ -4,81 +4,64 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Baby Animation V4 - Reborn</title>
-    <link rel="stylesheet" href="static/style_v4.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_v4.css') }}">
     <style>
-        /* 這裡保留你所有的動畫 CSS 強制覆蓋 */
+        /* 動畫覆蓋設定 */
         .stat-highlight { color: #ff0000; }
         .cup-full { transition: clip-path 3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
         .character {
-            background-image: url('static/baby.png') !important;
+            background-image: url('{{ url_for("static", filename="baby.png") }}') !important;
             background-size: contain !important;
             background-repeat: no-repeat !important;
             background-position: bottom center !important;
             transition: background-image 0.3s ease;
         }
-        .character.cat {
-            background-image: url('static/cat.png') !important;
-            background-size: 280% auto !important;
-            background-position: 10% calc(100% + 130px) !important;
-        }
-        .character.fox {
-            background-image: url('static/fox.png') !important;
-            background-size: contain !important;
-            background-position: center bottom !important;
-        }
+        .character.cat { background-image: url('{{ url_for("static", filename="cat.png") }}') !important; background-size: 280% auto !important; background-position: 10% calc(100% + 130px) !important; }
+        .character.fox { background-image: url('{{ url_for("static", filename="fox.png") }}') !important; background-size: contain !important; background-position: center bottom !important; }
         .char-clipper { bottom: 125px !important; }
         .active .character { transition-delay: 0s !important; transform: translateY(120%); }
-        .character.jump {
-            transform: translateY(1%) !important;
-            opacity: 1;
-            transition: transform 0.4s cubic-bezier(0.2, 1, 0.3, 1) !important;
-        }
-        .character.cat.jump { animation: catReveal 0.8s ease forwards !important; transform: none !important; }
-        @keyframes catReveal {
-            0% { clip-path: inset(100% 0 0 0); transform: translateY(1%); }
-            40% { clip-path: inset(60% 0 0 0); transform: translateY(1%); }
-            100% { clip-path: inset(0 0 0 0); transform: translateY(1%); }
-        }
-        .bubble.show-bubble {
-            opacity: 1; transform: scale(1);
-            transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-        }
+        .character.jump { transform: translateY(1%) !important; opacity: 1; transition: transform 0.4s cubic-bezier(0.2, 1, 0.3, 1) !important; }
+        .bubble.show-bubble { opacity: 1; transform: scale(1); transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; align-items: center; }
         .splash-container { position: absolute; bottom: 125px; left: 50%; transform: translate(-50%, 0); z-index: 60; }
         .droplet { position: absolute; width: 10px; height: 10px; background: #5A3A29; border-radius: 50%; }
-        
-        /* 導航箭頭樣式 */
-        .nav-arrow, .nav-arrow-left {
-            position: absolute; top: 55%; transform: translateY(-50%);
-            font-size: 30px; color: rgba(90, 58, 41, 0.6); cursor: pointer;
-            z-index: 90; background: rgba(255, 255, 255, 0.4);
-            width: 40px; height: 60px; display: flex; align-items: center; justify-content: center;
-            border-radius: 10px; backdrop-filter: blur(2px);
-        }
+
+        /* 導航與解鎖提示 */
+        .nav-arrow, .nav-arrow-left { position: absolute; top: 55%; transform: translateY(-50%); font-size: 30px; color: rgba(90, 58, 41, 0.6); cursor: pointer; z-index: 90; background: rgba(255, 255, 255, 0.4); width: 40px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
         .nav-arrow { right: 15px; }
         .nav-arrow-left { left: 15px; display: none; }
         .nav-arrow-left.show { display: flex; }
         .unlock-hint { position: absolute; right: 5px; top: 49%; color: rgba(100, 100, 100, 0.7); font-size: 11px; font-weight: bold; }
+
+        /* 使用記錄卡片 (依照截圖風格) */
+        .session-card { background: #FFFAF5; border-radius: 15px; padding: 15px; border: 1px solid #F0E0D0; margin-bottom: 15px; position: relative; text-align: left; }
+        .duration-badge { position: absolute; top: 12px; right: 12px; background: #5A3A29; color: white; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; }
+        .session-count { color: #888; font-size: 14px; margin-bottom: 8px; display: block; }
+        .time-row { font-size: 16px; margin: 5px 0; color: #333; display: flex; align-items: center; }
+        .start-text { color: #4CAF50; font-weight: bold; margin-right: 8px; }
+        .end-text { color: #e76f51; font-weight: bold; margin-right: 8px; }
+
+        /* 修正彈窗按鈕顏色 */
+        .modal-btn { background: #5A3A29 !important; color: white !important; font-weight: bold; padding: 12px 40px; border-radius: 25px; border: none; cursor: pointer; }
     </style>
 </head>
 
 <body class="baby">
-    <div class="user-bar" style="position: fixed; top: 0; width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; display: flex; justify-content: space-between; z-index: 1000;">
+    <div class="user-bar">
         <span class="username">👤 {{ username }}</span>
-        <a href="/logout" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 5px 15px; border-radius: 15px; font-size: 12px;">登出</a>
+        <a href="/logout" class="logout-btn">登出</a>
     </div>
 
     <div class="app-container" onclick="play()">
-        <div class="header-box" style="margin-top: 50px;">Reborn</div>
+        <div class="header-box">Reborn</div>
 
         <div class="stats-box">
-            <div class="exp-wrapper" style="width: 90%; margin: auto; cursor: pointer;">
-                <div class="exp-header" style="display: flex; justify-content: space-between; font-weight: bold;">
+            <div class="exp-wrapper">
+                <div class="exp-header">
                     <span>我的經驗值 (EXP)</span>
-                    <span id="level-display" style="color:#FF9800;">Lvl. {{ level | default(1) }}</span>
+                    <span id="level-display" style="color:#FF9800;">Lvl. {{ level }}</span>
                 </div>
-                <div class="exp-progress-container" style="background: #eee; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 5px;">
-                    <div class="exp-progress-fill" id="exp-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #FFC107, #FF9800); transition: width 0.5s;"></div>
+                <div class="exp-progress-container">
+                    <div class="exp-progress-fill" id="exp-fill"></div>
                 </div>
             </div>
         </div>
@@ -99,156 +82,124 @@
             </a>
         </div>
 
-        <div class="chart-title-outer" style="margin-top: 20px; text-align: center; font-weight: bold; color: #5A3A29;">本週咖啡時光 (小時)</div>
-        <div class="chart-box" style="display: flex; padding: 15px; background: white; border-radius: 12px; margin: 10px auto; width: 90%; border: 1px solid #eee;">
-            <div class="chart-y-axis" style="display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: #999;">
-                <span>6h</span><span>4h</span><span>2h</span><span>0h</span>
+        <div class="chart-title-outer">本週咖啡時光 (小時)</div>
+        <div class="chart-box">
+            <div class="chart-y-axis">
+                <span class="y-label">6h</span><span class="y-label">4h</span><span class="y-label">2h</span><span class="y-label">0h</span>
             </div>
-            <div class="chart-content" style="flex: 1; margin-left: 10px; display: flex; flex-direction: column;">
-                <div class="chart-bars" style="display: flex; justify-content: space-around; align-items: flex-end; height: 100px; border-bottom: 1px solid #ddd; border-left: 1px solid #ddd;">
+            <div class="chart-content">
+                <div class="chart-bars">
+                    {% set day_names = ['一', '二', '三', '四', '五', '六', '日'] %}
+                    {% set full_names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] %}
                     {% for i in range(7) %}
-                    {% set hours = chart_data[i] if chart_data else 0 %}
-                    {% set pct = (hours / 6 * 100) if hours <= 6 else 100 %}
-                    <div class="bar-group" style="flex: 1; display: flex; flex-direction: column; align-items: center;" onclick="showDayDetails({{ i }}, '星期{{ ['一','二','三','四','五','六','日'][i] }}')">
-                        <div class="bar" style="height: {{ pct }}%; width: 60%; background: linear-gradient(180deg, #7B5544, #5A3A29); border-radius: 4px 4px 0 0;"></div>
-                        <span style="font-size: 11px; margin-top: 5px;">{{ ['一','二','三','四','五','六','日'][i] }}</span>
+                    <div class="bar-group" onclick="event.stopPropagation(); showDayDetails({{ i }}, '{{ full_names[i] }}')">
+                        <div class="bar" style="height: {{ (chart_data[i] / 6 * 100) if chart_data[i] < 6 else 100 }}%;"></div>
+                        <div class="day-label">{{ day_names[i] }}</div>
                     </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
 
-        <div class="nav-arrow-left" id="nav-arrow-left" onclick="event.stopPropagation(); goBack();">&#10094;</div>
+        <div class="nav-arrow-left" id="nav-arrow-left" onclick="event.stopPropagation(); goBack()">&#10094;</div>
         <div class="unlock-hint" id="unlock-hint">Lv.5 解鎖</div>
-        <div class="nav-arrow" onclick="event.stopPropagation(); goForward();">&#10095;</div>
+        <div class="nav-arrow" onclick="event.stopPropagation(); goForward()">&#10095;</div>
     </div>
 
-    <div id="day-details-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center;">
-        <div style="background: white; padding: 20px; border-radius: 15px; width: 85%; max-width: 320px; text-align: center;">
-            <h3 id="day-modal-title">記錄</h3>
-            <div id="day-sessions-list" style="max-height: 250px; overflow-y: auto; margin: 15px 0;"></div>
-            <button onclick="document.getElementById('day-details-modal').style.display='none'" style="background: #5A3A29; color: white; border: none; padding: 10px 25px; border-radius: 20px;">關閉</button>
+    <div class="modal-overlay" id="day-details-modal" onclick="closeDayModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-title" id="day-modal-title">📅 使用記錄</div>
+            <div id="day-sessions-list" style="max-height: 320px; overflow-y: auto; margin: 15px 0;"></div>
+            <button class="modal-btn" onclick="closeDayModal()">關閉</button>
         </div>
     </div>
 
     <script>
         const sessionsData = {{ sessions_data | tojson | safe }};
-        const character = document.querySelector('.character');
-        const bubble = document.querySelector('.bubble');
-        const scene = document.querySelector('.scene');
+        const currentExp = {{ xp | default(0) }};
+        const currentLevel = {{ level | default(1) }};
         
-        let currentExp = {{ xp | default(0) }};
-        let currentLevel = {{ level | default(1) }};
-        let isPlaying = false;
+        // 初始化 XP 條
+        document.getElementById('exp-fill').style.width = (currentExp % 50 / 50 * 100) + '%';
 
-        // --- 初始化 UI ---
-        function updateExpUI() {
-            let levelExp = currentExp % 50;
-            const pct = (levelExp / 50) * 100;
-            document.getElementById('exp-fill').style.width = pct + '%';
-            document.getElementById('level-display').innerText = 'Lvl. ' + currentLevel;
-        }
-
-        // --- 角色切換邏輯 ---
-        const characters = ['baby', 'cat', 'fox'];
-        const characterUnlockLevels = [0, 5, 10];
-        let currentCharacterIndex = parseInt(localStorage.getItem('currentCharacterIndex')) || 0;
-
-        function applyCharacterClass() {
-            character.classList.remove('cat', 'fox');
-            if (characters[currentCharacterIndex] !== 'baby') {
-                character.classList.add(characters[currentCharacterIndex]);
-            }
-            updateArrowState();
-        }
-
-        function goForward() {
-            if (currentCharacterIndex < characters.length - 1 && currentLevel >= characterUnlockLevels[currentCharacterIndex + 1]) {
-                currentCharacterIndex++;
-                saveState();
-            } else {
-                alert(`升到 Lv.${characterUnlockLevels[currentCharacterIndex + 1]} 即可解鎖！`);
-            }
-        }
-
-        function goBack() {
-            if (currentCharacterIndex > 0) {
-                currentCharacterIndex--;
-                saveState();
-            }
-        }
-
-        function saveState() {
-            localStorage.setItem('currentCharacterIndex', currentCharacterIndex);
-            applyCharacterClass();
-        }
-
-        function updateArrowState() {
-            document.getElementById('nav-arrow-left').classList.toggle('show', currentCharacterIndex > 0);
-            const hint = document.getElementById('unlock-hint');
-            if (currentCharacterIndex < 2 && currentLevel < characterUnlockLevels[currentCharacterIndex + 1]) {
-                hint.innerText = `Lv.${characterUnlockLevels[currentCharacterIndex + 1]} 解鎖`;
-                hint.style.display = 'block';
-            } else {
-                hint.style.display = 'none';
-            }
-        }
-
-        // --- 動畫播放 ---
-        function createSplash() {
-            const splash = document.createElement('div');
-            splash.className = 'splash-container';
-            scene.appendChild(splash);
-            for (let i = 0; i < 15; i++) {
-                let d = document.createElement('div');
-                d.className = 'droplet';
-                splash.appendChild(d);
-                const r = Math.random() * Math.PI * 2;
-                const f = 40 + Math.random() * 60;
-                const dx = Math.cos(r) * f;
-                const dy = Math.sin(r) * f - 40;
-                d.animate([
-                    { transform: 'translate(0,0)', opacity: 1 },
-                    { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 }
-                ], { duration: 800, fill: 'forwards' }).onfinish = () => d.remove();
-            }
-        }
-
+        // 動畫與氣泡邏輯 (跳過與否)
         function play() {
-            if (isPlaying || scene.classList.contains('active')) return;
-            isPlaying = true;
-            scene.classList.add('filling', 'active');
+            const scene = document.querySelector('.scene');
+            if (scene.classList.contains('active')) return;
+            scene.classList.add('active', 'filling');
             setTimeout(() => {
-                character.classList.add('jump');
+                document.querySelector('.character').classList.add('jump');
                 createSplash();
             }, 2950);
             setTimeout(() => {
-                bubble.classList.add('show-bubble');
-                generateEncouragement();
-                isPlaying = false;
+                document.querySelector('.bubble').classList.add('show-bubble');
+                document.getElementById('encourage-msg').innerText = "回收地球，我最拿手！✨";
+                sessionStorage.setItem('animationPlayed', 'true');
             }, 3500);
         }
 
-        function generateEncouragement() {
-            const msg = {{ chart_data | sum }} > 3 ? "回收小天才！✨" : "要記得做回收喔！☕";
-            document.getElementById('encourage-msg').innerText = msg;
+        function createSplash() {
+            const scene = document.querySelector('.scene');
+            for (let i = 0; i < 15; i++) {
+                const d = document.createElement('div');
+                d.className = 'droplet';
+                scene.appendChild(d);
+                const r = Math.random() * Math.PI * 2, f = 40 + Math.random() * 60;
+                d.animate([{transform:'translate(0,0)',opacity:1},{transform:`translate(${Math.cos(r)*f}px,${Math.sin(r)*f-50}px)`,opacity:0}], {duration:800}).onfinish=()=>d.remove();
+            }
         }
 
-        function showDayDetails(day, name) {
+        // 彈窗顯示邏輯 (復刻截圖外觀)
+        function showDayDetails(idx, name) {
             const list = document.getElementById('day-sessions-list');
             document.getElementById('day-modal-title').innerText = `📅 ${name} 使用記錄`;
-            const sessions = sessionsData[day] || [];
-            list.innerHTML = sessions.length ? sessions.map(s => `
-                <div style="background: #f9f9f9; padding: 10px; margin-bottom: 5px; border-radius: 8px; border: 1px solid #eee;">
-                    <b>${s.start} - ${s.end}</b><br><small>時長: ${s.duration}</small>
-                </div>
-            `).join('') : "今天還沒喝咖啡喔～";
-            document.getElementById('day-details-modal').style.display = 'flex';
+            const sessions = sessionsData[idx] || [];
+            if (sessions.length === 0) {
+                list.innerHTML = `<div style="padding:40px; color:#999; text-align:center;"><div style="font-size:50px;">📭</div>這天還沒有使用記錄喔～</div>`;
+            } else {
+                list.innerHTML = sessions.map((s, i) => `
+                    <div class="session-card">
+                        <span class="session-count">第 ${i + 1} 次</span>
+                        <div class="duration-badge">${s.duration}</div>
+                        <div class="time-row"><span class="start-text">▸ 開始</span> ${s.start}</div>
+                        <div class="time-row"><span class="end-text">◂ 結束</span> ${s.end}</div>
+                    </div>
+                `).join('');
+            }
+            document.getElementById('day-details-modal').classList.add('show');
         }
 
+        function closeDayModal() { document.getElementById('day-details-modal').classList.remove('show'); }
+
+        // 角色管理
+        let charIdx = parseInt(localStorage.getItem('charIdx')) || 0;
+        const chars = ['baby', 'cat', 'fox'], unlockLvls = [0, 5, 10];
+        function applyChar() {
+            const c = document.querySelector('.character');
+            c.classList.remove('cat', 'fox');
+            if(chars[charIdx] !== 'baby') c.classList.add(chars[charIdx]);
+            document.getElementById('nav-arrow-left').classList.toggle('show', charIdx > 0);
+            const hint = document.getElementById('unlock-hint');
+            if (charIdx < 2 && currentLevel < unlockLvls[charIdx+1]) {
+                hint.innerText = `Lv.${unlockLvls[charIdx+1]} 解鎖`;
+                hint.style.display = 'block';
+            } else { hint.style.display = 'none'; }
+        }
+        function goForward() {
+            if (charIdx < 2 && currentLevel >= unlockLvls[charIdx+1]) { charIdx++; localStorage.setItem('charIdx', charIdx); applyChar(); }
+            else if (charIdx < 2) alert(`還差一點點！升到 Lv.${unlockLvls[charIdx+1]} 就能解鎖夥伴囉！`);
+        }
+        function goBack() { if(charIdx > 0) { charIdx--; localStorage.setItem('charIdx', charIdx); applyChar(); } }
+
         window.onload = () => {
-            updateExpUI();
-            applyCharacterClass();
+            applyChar();
+            if (sessionStorage.getItem('animationPlayed')) {
+                const scene = document.querySelector('.scene');
+                scene.classList.add('active', 'filling');
+                document.querySelector('.character').classList.add('jump');
+                document.querySelector('.bubble').classList.add('show-bubble');
+                document.getElementById('encourage-msg').innerText = "歡迎回來！繼續挑戰吧！🌱";
+            }
         };
     </script>
 </body>
