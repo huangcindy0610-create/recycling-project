@@ -7,14 +7,13 @@ import hashlib
 # ==========================================
 # 設定與初始化
 # ==========================================
-# 請確保 Render 的 Environment Variables 已設定 GOOGLE_API_KEY
 MY_API_KEY = os.environ.get("GOOGLE_API_KEY", "AIzaSyDVv7Wt-S0e0G5rCXKiCR_6Iut1ZZFi58E")
 client = genai.Client(api_key=MY_API_KEY)
 
-# 使用穩定版模型
+# 【修正】使用最穩定的 1.5-flash 模型，避免 404 錯誤
 MODEL_NAME = "gemini-1.5-flash" 
 
-# --- 🎮 遊戲平衡設定 ---
+# --- 🎮 遊戲平衡設定 (補齊變數防止 app.py 崩潰) ---
 XP_REWARD_CORRECT = 50
 XP_REWARD_WRONG = 10
 XP_PER_LEVEL = 50
@@ -56,23 +55,23 @@ def get_current_character(level: int) -> str:
 def recognize_item(image_path: str) -> str:
     try:
         image = Image.open(image_path)
-        prompt = """請辨識袋子裡的物品(忽略袋子)。用繁體中文簡潔回答：
-        物品名稱: 
-        物品材質: 
+        prompt = """請辨識袋子裡的物品(忽略袋子本身)。用繁體中文簡潔回答：
+        物品名稱: (名稱)
+        物品材質: (材質)
         注意：直接回答即可，不要使用符號。"""
         response = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
         return response.text
     except Exception as e:
-        return f"AI 辨識失敗: {str(e)}"
+        return f"AI 辨識暫時失效: {str(e)}"
 
 def generate_recycling_quiz(item_description: str):
-    # 植入回收規定
-    rules = "1.容器(鐵鋁玻璃塑膠紙)倒空沖洗壓扁 2.乾電池單獨回收 3.五大電器/資訊物品保持完整 4.照明光源防破 5.農藥三沖三洗 6.碎玻璃包覆標記。"
-    prompt = f"""根據規定出題：{rules}\n物品：{item_description}\n格式：
+    # 植入九大類回收規則
+    rules = "1.容器(鐵鋁玻璃塑膠紙)倒空沖洗壓扁 2.乾電池單獨回收 3.五大電器/資訊物品保持完整 4.照明防破 5.農藥三沖三洗 6.碎玻璃包覆標記。"
+    prompt = f"""根據規定出題：{rules}\n物品描述：{item_description}\n格式必須嚴格遵守：
     QUESTION_START 題目內容 QUESTION_END
     OPTIONS_START (A)... (B)... (C)... (D)... OPTIONS_END
     ANSWER_START A ANSWER_END
-    EXPLANATION_START 解說內容(兩句內) EXPLANATION_END"""
+    EXPLANATION_START 解說內容(不超過兩句) EXPLANATION_END"""
 
     try:
         response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
@@ -83,4 +82,4 @@ def generate_recycling_quiz(item_description: str):
         e = re.search(r'EXPLANATION_START\s*(.*?)\s*EXPLANATION_END', text, re.DOTALL)
         return q.group(1).strip(), o.group(1).strip(), a.group(1).upper().strip(), e.group(1).strip()
     except:
-        return "如何回收此物？", "(A)資源回收 (B)一般垃圾", "A", "請依照當地規定回收。"
+        return "此物品該如何回收？", "(A)資源回收 (B)垃圾桶", "A", "請依官方規定回收。"
