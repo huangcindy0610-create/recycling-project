@@ -1,6 +1,6 @@
 flask
 gunicorn
-google-genai
+google-genai>=0.1.0  # 強制使用新版以支援 1.5 系列模型
 Pillow
 beautifulsoup4
 requests
