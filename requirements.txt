@@ -1,7 +1,6 @@
 flask
 gunicorn
-sqlite3
-google-generativeai
+google-genai
 Pillow
 beautifulsoup4
 requests
