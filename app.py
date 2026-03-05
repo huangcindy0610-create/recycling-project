@@ -365,19 +365,16 @@ def get_user_info():
         'xp': xp,
         'level': level
     })
-# --- 所有的路由都必須寫在啟動區塊之前 ---
+# ... 之前所有的路由 (upload_file, get_user_info 等) 都放在這上面 ...
 
+# --- 健康檢查路由：確保在啟動區塊之前 ---
 @app.route('/healthz')
 def healthz():
     return "OK", 200
 
-# --- 這是整個檔案的最末端，且只能有一個 ---
+# --- 程式進入點：整個檔案只能有一個，且放在最末端 ---
 if __name__ == '__main__':
-    # 這裡確保程式能抓到 Render 分配的埠口
+    # 讀取 Render 分配的埠口，預設為 10000
     port = int(os.environ.get("PORT", 10000))
-    # 務必監聽 0.0.0.0
+    # 監聽 0.0.0.0 確保外部掃描器能進入
     app.run(host='0.0.0.0', port=port)
-    port = int(os.environ.get("PORT", 10000))
-    # 強制監聽 0.0.0.0 (代表所有網路介面)
-    app.run(host='0.0.0.0', port=port)
-
