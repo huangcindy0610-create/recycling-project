@@ -1,11 +1,12 @@
 import sqlite3
 import os
+import sys
 from flask import Flask, request, render_template_string, g
 from datetime import datetime
 
 app = Flask(__name__)
 
-# 使用絕對路徑，避免 Render 環境路徑混亂
+# 使用絕對路徑確保資料庫位置正確
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, "NFCtag.db")
 
@@ -23,10 +24,11 @@ def close_db(e):
     if db is not None:
         db.close()
 
-# --- 2. 強制初始化功能 (放在全域，確保 gunicorn 啟動時也會執行) ---
+# --- 2. 初始化功能 (確保在生產環境中也能運行) ---
 def init_db():
-    print(f"Checking database at: {DB_NAME}")
-    with sqlite3.connect(DB_NAME) as conn:
+    try:
+        print(f"--- 系統啟動：檢查資料庫於 {DB_NAME} ---")
+        conn = sqlite3.connect(DB_NAME)
         conn.execute('''
             CREATE TABLE IF NOT EXISTS NFCtag (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,8 +38,12 @@ def init_db():
             )
         ''')
         conn.commit()
+        conn.close()
+        print("--- 資料庫初始化成功 ---")
+    except Exception as e:
+        print(f"--- 資料庫初始化失敗: {str(e)} ---")
+        # 這裡不退出，讓 Flask 嘗試啟動以便查看錯誤日誌
 
-# 程式載入時立即執行
 init_db()
 
 def format_duration(seconds):
@@ -90,7 +96,6 @@ def nfc_update():
     
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     db = get_db()
-    # 尋找是否有未完成的紀錄
     active = db.execute("SELECT id FROM NFCtag WHERE serialno = ? AND endtime IS NULL", (sno,)).fetchone()
     
     if active:
@@ -112,8 +117,11 @@ def view():
     for r in rows:
         duration, cls = "-", "status-in"
         if r['endtime']:
-            diff = (datetime.strptime(r['endtime'], fmt) - datetime.strptime(r['starttime'], fmt)).total_seconds()
-            duration, cls = format_duration(diff), "status-done"
+            try:
+                diff = (datetime.strptime(r['endtime'], fmt) - datetime.strptime(r['starttime'], fmt)).total_seconds()
+                duration, cls = format_duration(diff), "status-done"
+            except:
+                pass
         data.append({**dict(r), "duration": duration, "class": cls})
 
     content = '''
@@ -134,8 +142,14 @@ def view():
 def stat():
     db = get_db()
     rows = db.execute("SELECT starttime, endtime FROM NFCtag WHERE endtime IS NOT NULL").fetchall()
-    total_sec = sum((datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S') - datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')).total_seconds() for r in rows)
-    
+    total_sec = 0
+    for r in rows:
+        try:
+            diff = (datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S') - datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')).total_seconds()
+            total_sec += diff
+        except:
+            pass
+            
     content = f'''
     <h2>數據統計</h2>
     <div style="background: #e7f5ff; padding: 20px; border-radius: 8px;">
@@ -145,7 +159,8 @@ def stat():
     '''
     return render_template_string(BASE_HTML.replace('{% block content %}{% endblock %}', content))
 
-# 本地調試用
+# --- 5. 埠口綁定 (Render 關鍵) ---
 if __name__ == '__main__':
+    # 這裡確保本地執行時也能運作
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
