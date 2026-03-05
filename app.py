@@ -365,7 +365,8 @@ def get_user_info():
         'xp': xp,
         'level': level
     })
-
 if __name__ == '__main__':
+    # 讀取環境變數中的埠口，Render 預設為 10000
     port = int(os.environ.get("PORT", 10000))
+    # 強制監聽 0.0.0.0 (代表所有網路介面)
     app.run(host='0.0.0.0', port=port)
