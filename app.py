@@ -1,10 +1,11 @@
 import sqlite3
 import os
+import sys
 from flask import Flask, request, render_template, redirect, url_for, send_from_directory, session, jsonify, g
 from datetime import datetime, timedelta
 from functools import wraps
 
-# 匯入你的自定義模組
+# 匯入自定義模組
 from QA import recognize_item, generate_recycling_quiz, get_level, XP_REWARD_CORRECT, XP_REWARD_WRONG, get_image_hash
 from auth import (register_user, login_user, get_user_xp_by_username, 
                   update_user_xp_by_username, is_duplicate_image_for_user, 
@@ -35,17 +36,24 @@ def close_db(e):
 def init_db():
     with sqlite3.connect(DB_NAME) as conn:
         conn.execute('CREATE TABLE IF NOT EXISTS NFCtag (id INTEGER PRIMARY KEY AUTOINCREMENT, serialno TEXT NOT NULL, starttime TIMESTAMP, endtime TIMESTAMP)')
-
 init_db()
 
-# --- 數據計算 (供 Baby 介面圖表使用) ---
+def format_duration_str(seconds):
+    seconds = int(seconds)
+    return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
+
+# --- 數據計算 (供 Baby 介面圖表與彈窗使用) ---
 def get_local_chart_data():
     weekly_seconds = {i: 0 for i in range(7)}
     weekly_sessions = {i: [] for i in range(7)}
     today = datetime.now()
+    # 找到本週一的 00:00:00
     monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    
     db = get_db()
-    rows = db.execute("SELECT * FROM NFCtag WHERE endtime IS NOT NULL").fetchall()
+    # 抓取有完成紀錄的數據
+    rows = db.execute("SELECT * FROM NFCtag WHERE endtime IS NOT NULL ORDER BY starttime ASC").fetchall()
+    
     for r in rows:
         try:
             start_dt = datetime.strptime(r['starttime'], '%Y-%m-%d %H:%M:%S')
@@ -53,10 +61,18 @@ def get_local_chart_data():
                 end_dt = datetime.strptime(r['endtime'], '%Y-%m-%d %H:%M:%S')
                 diff = (end_dt - start_dt).total_seconds()
                 weekday = start_dt.weekday()
+                
                 weekly_seconds[weekday] += diff
-                weekly_sessions[weekday].append({'start': r['starttime'].split(' ')[1], 'end': r['endtime'].split(' ')[1], 'duration': f"{int(diff//3600):02}:{int((diff%3600)//60):02}:{int(diff%60):02}"})
+                weekly_sessions[weekday].append({
+                    'start': r['starttime'].split(' ')[1], # 只要時間部分
+                    'end': r['endtime'].split(' ')[1],
+                    'duration': format_duration_str(diff)
+                })
         except: continue
-    return [round(weekly_seconds[i] / 3600, 1) for i in range(7)], weekly_sessions
+    
+    # 圖表用的時數列表 [週一, 週二...週日]
+    hours_list = [round(weekly_seconds[i] / 3600, 2) for i in range(7)]
+    return hours_list, weekly_sessions
 
 # --- 路由設定 ---
 def login_required(f):
@@ -69,7 +85,6 @@ def login_required(f):
 @app.route('/healthz')
 def healthz(): return "OK", 200
 
-# 【關鍵】首頁：絕對不可以跳轉到 /view，必須渲染遊戲模板
 @app.route('/')
 @login_required
 def home():
@@ -77,7 +92,6 @@ def home():
     xp = get_user_xp_by_username(u)
     lvl = get_level(xp)
     chart_data, sessions_data = get_local_chart_data()
-    # 確保這裡名稱與你 templates 裡的檔案完全一致
     return render_template('demo_baby_v4.html', username=u, xp=xp, level=lvl, chart_data=chart_data, sessions_data=sessions_data)
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -94,13 +108,14 @@ def login_page():
 @app.route('/register', methods=['POST'])
 def register():
     u, p, cp = request.form.get('username', '').strip(), request.form.get('password', ''), request.form.get('confirm_password', '')
-    if p != cp: return render_template('login.html', error='密碼不一致')
+    if p != cp: return render_template('login.html', error='兩次密碼不一致')
     success, msg = register_user(u, p)
     return render_template('login.html', success=msg if success else None, error=None if success else msg)
 
 @app.route('/logout')
 def logout():
     session.pop('username', None)
+    sessionStorage.removeItem('animationPlayed') # 登出時重置動畫狀態
     return redirect(url_for('login_page'))
 
 @app.route('/scan', methods=['GET', 'POST'])
@@ -156,7 +171,7 @@ def nfc_update():
 
 @app.route('/view')
 @login_required
-def view():
+def view_logs():
     db = get_db()
     rows = db.execute("SELECT * FROM NFCtag ORDER BY id DESC LIMIT 50").fetchall()
     return f"<h1>NFC Logs</h1>{str([dict(r) for r in rows])}"
