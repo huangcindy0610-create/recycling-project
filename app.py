@@ -3,7 +3,7 @@ import os
 import requests
 from functools import wraps
 from datetime import datetime, timedelta
-# 確保 QA.py 與 auth.py 存在
+# 確保 QA.py 與 auth.py 與此檔案在同一目錄
 from QA import (recognize_item, generate_recycling_quiz, get_level, 
                 XP_REWARD_CORRECT, XP_REWARD_WRONG, get_image_hash)
 from auth import (register_user, login_user, get_user_xp_by_username, 
@@ -14,64 +14,96 @@ from auth import (register_user, login_user, get_user_xp_by_username,
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'super_secret_key_123')
 
+# 設定圖片上傳存檔的路徑
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# 後端 API 網址
+# 後端 API 網址 (recycling-project-1)
 NFC_API_URL = "https://recycling-project-1.onrender.com/view"
 
-# === NFC 數據抓取 ===
+# === 1. NFC 數據處理函數 (定義在路由之前) ===
+
 def get_weekly_usage():
+    """抓取 JSON 並計算本週每天時數"""
     weekly_seconds = {i: 0 for i in range(7)}
     try:
         response = requests.get(NFC_API_URL, timeout=10)
         data = response.json()
+        if not isinstance(data, list): return weekly_seconds
+
         today = datetime.now()
         monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        
         for item in data:
             if item.get('start') and item.get('end'):
-                st = datetime.strptime(item['start'], '%Y-%m-%d %H:%M:%S')
-                if st >= monday:
-                    et = datetime.strptime(item['end'], '%Y-%m-%d %H:%M:%S')
-                    weekly_seconds[st.weekday()] += (et - st).total_seconds()
-    except: pass
+                try:
+                    st = datetime.strptime(item['start'], '%Y-%m-%d %H:%M:%S')
+                    if st >= monday:
+                        et = datetime.strptime(item['end'], '%Y-%m-%d %H:%M:%S')
+                        weekly_seconds[st.weekday()] += (et - st).total_seconds()
+                except: continue
+    except Exception as e:
+        print(f"時數計算失敗: {e}")
     return {day: round(sec / 3600, 1) for day, sec in weekly_seconds.items()}
 
 def get_weekly_sessions():
+    """抓取 JSON 並整理詳細記錄"""
     weekly_sessions = {i: [] for i in range(7)}
     try:
         response = requests.get(NFC_API_URL, timeout=10)
         data = response.json()
+        if not isinstance(data, list): return weekly_sessions
+
         today = datetime.now()
         monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        
         for item in data:
             if item.get('start'):
-                st = datetime.strptime(item['start'], '%Y-%m-%d %H:%M:%S')
-                if st >= monday:
-                    dur = "-"
-                    if item.get('end'):
-                        diff = datetime.strptime(item['end'], '%Y-%m-%d %H:%M:%S') - st
-                        h, m = divmod(int(diff.total_seconds()), 3600)
-                        m, s = divmod(m, 60)
-                        dur = f"{h:02}:{m:02}:{s:02}"
-                    weekly_sessions[st.weekday()].append({
-                        'start': item['start'].split(' ')[1],
-                        'end': item['end'].split(' ')[1] if item.get('end') else "ING",
-                        'duration': dur
-                    })
+                try:
+                    st = datetime.strptime(item['start'], '%Y-%m-%d %H:%M:%S')
+                    if st >= monday:
+                        dur = "-"
+                        if item.get('end'):
+                            diff = datetime.strptime(item['end'], '%Y-%m-%d %H:%M:%S') - st
+                            h, m = divmod(int(diff.total_seconds()), 3600)
+                            m, s = divmod(m, 60)
+                            dur = f"{h:02}:{m:02}:{s:02}"
+                        
+                        weekly_sessions[st.weekday()].append({
+                            'start': item['start'].split(' ')[1],
+                            'end': item['end'].split(' ')[1] if item.get('end') else "進行中",
+                            'duration': dur
+                        })
+                except: continue
     except: pass
     return weekly_sessions
 
+def get_chart_data():
+    """安全地封裝圖表數據"""
+    try:
+        usage = get_weekly_usage()
+        sessions = get_weekly_sessions()
+        hours_list = [usage.get(i, 0.0) for i in range(7)]
+        sessions_list = [sessions.get(i, []) for i in range(7)]
+        return hours_list, sessions_list
+    except Exception as e:
+        print(f"圖表封裝錯誤: {e}")
+        return [0.0]*7, [[] for _ in range(7)]
+
+# === 2. 登入裝飾器 ===
+
 def login_required(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
-        if 'username' not in session: return redirect(url_for('login_page'))
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login_page'))
         return f(*args, **kwargs)
-    return decorated
+    return decorated_function
 
-# === 路由設定 ===
+# === 3. 核心路由 ===
+
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
     if request.method == 'POST':
@@ -89,13 +121,15 @@ def register():
     user = request.form.get('username', '').strip()
     pwd = request.form.get('password', '')
     if pwd != request.form.get('confirm_password', ''):
-        return render_template('login.html', error='密碼不一致')
+        return render_template('login.html', error='密碼輸入不一致')
     success, msg = register_user(user, pwd)
-    return render_template('login.html', success='註冊成功' if success else None, error=msg if not success else None)
+    return render_template('login.html', 
+                           success='註冊成功，請登入！' if success else None, 
+                           error=None if success else msg)
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
+    session.clear()
     return redirect(url_for('login_page'))
 
 @app.route('/')
@@ -103,11 +137,15 @@ def logout():
 def home():
     username = session['username']
     xp = get_user_xp_by_username(username)
-    usage = get_weekly_usage()
-    sessions = get_weekly_sessions()
-    return render_template('demo_baby_v4.html', xp=xp, level=get_level(xp), 
-                           username=username, chart_data=[usage[i] for i in range(7)], 
-                           sessions_data=[sessions[i] for i in range(7)])
+    # 使用修正後的安全數據獲取函數
+    hours_list, sessions_list = get_chart_data()
+    
+    return render_template('demo_baby_v4.html', 
+                           xp=xp, 
+                           level=get_level(xp), 
+                           username=username, 
+                           chart_data=hours_list, 
+                           sessions_data=sessions_list)
 
 @app.route('/scan', methods=['GET', 'POST'])
 @login_required
@@ -118,24 +156,47 @@ def scan_page():
         if file and file.filename:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(filepath)
+            
+            # AI 辨識與題目生成
             item_result = recognize_item(filepath)
+            if "失敗" in item_result or "忙碌" in item_result:
+                return f"AI 辨識發生錯誤: {item_result}"
+                
             q, o, a, e = generate_recycling_quiz(item_result)
             session.update({'correct_answer': a, 'explanation': e})
-            return render_template('result.html', image_file=file.filename, item_result=item_result, 
-                                   question=q, options=o, username=username)
-    return render_template('index.html', username=username, remaining_uploads=get_remaining_uploads(username))
+            
+            return render_template('result.html', 
+                                   image_file=file.filename, 
+                                   item_result=item_result, 
+                                   question=q, 
+                                   options=o, 
+                                   username=username)
+                                   
+    return render_template('index.html', 
+                           username=username, 
+                           remaining_uploads=get_remaining_uploads(username))
 
 @app.route('/submit_answer', methods=['POST'])
 @login_required
 def submit_answer():
     user_ans = request.json.get('answer', '').upper()
     correct_ans = session.get('correct_answer')
+    
     xp = XP_REWARD_CORRECT if user_ans == correct_ans else XP_REWARD_WRONG
     new_xp = update_user_xp_by_username(session['username'], xp)
-    return jsonify({'correct': user_ans == correct_ans, 'gained_xp': xp, 'current_total_xp': new_xp})
+    
+    return jsonify({
+        'correct': user_ans == correct_ans, 
+        'gained_xp': xp, 
+        'current_total_xp': new_xp
+    })
 
 @app.route('/healthz')
-def healthz(): return "OK", 200
+def healthz():
+    return "OK", 200
+
+# === 4. 啟動區塊 (必須在最末端) ===
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
