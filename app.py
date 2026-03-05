@@ -21,9 +21,9 @@ def close_db(e):
         db.close()
 
 def init_db():
-    with app.app_context():
-        db = get_db()
-        db.execute('''
+    """初始化資料庫表格"""
+    with sqlite3.connect(DB_NAME) as conn:
+        conn.execute('''
             CREATE TABLE IF NOT EXISTS NFCtag (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 serialno TEXT NOT NULL,
@@ -31,7 +31,10 @@ def init_db():
                 endtime TIMESTAMP
             )
         ''')
-        db.commit()
+        conn.commit()
+
+# 在程式啟動時立即執行初始化 (解決 Render/Gunicorn 啟動問題)
+init_db()
 
 def format_duration(seconds):
     if seconds is None or seconds < 0: return "00:00:00"
@@ -71,6 +74,11 @@ BASE_HTML = '''
 '''
 
 # --- 路由 ---
+
+# 1. 新增：健康檢查路由，解決 Render 404 Health Check 報錯
+@app.route('/healthz')
+def healthz():
+    return "OK", 200
 
 @app.route('/')
 def index():
@@ -140,7 +148,6 @@ def stat():
     return render_template_string(BASE_HTML.replace('{% block content %}{% endblock %}', content))
 
 if __name__ == '__main__':
-    init_db()
     # Render 會自動分配 PORT，若沒有則預設 8000
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
