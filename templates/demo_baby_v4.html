@@ -6,201 +6,111 @@
     <title>Baby Animation V4 - Reborn</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style_v4.css') }}">
     <style>
-        /* 動畫覆蓋設定 */
-        .stat-highlight { color: #ff0000; }
-        .cup-full { transition: clip-path 3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
+        /* 核心樣式修正 */
         .character {
             background-image: url('{{ url_for("static", filename="baby.png") }}') !important;
             background-size: contain !important;
             background-repeat: no-repeat !important;
             background-position: bottom center !important;
-            transition: background-image 0.3s ease;
         }
-        .character.cat { background-image: url('{{ url_for("static", filename="cat.png") }}') !important; background-size: 280% auto !important; background-position: 10% calc(100% + 130px) !important; }
-        .character.fox { background-image: url('{{ url_for("static", filename="fox.png") }}') !important; background-size: contain !important; background-position: center bottom !important; }
+        .character.cat { background-image: url('{{ url_for("static", filename="cat.png") }}') !important; }
+        .character.fox { background-image: url('{{ url_for("static", filename="fox.png") }}') !important; }
         .char-clipper { bottom: 125px !important; }
         .active .character { transition-delay: 0s !important; transform: translateY(120%); }
         .character.jump { transform: translateY(1%) !important; opacity: 1; transition: transform 0.4s cubic-bezier(0.2, 1, 0.3, 1) !important; }
-        .bubble.show-bubble { opacity: 1; transform: scale(1); transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; align-items: center; }
-        .splash-container { position: absolute; bottom: 125px; left: 50%; transform: translate(-50%, 0); z-index: 60; }
-        .droplet { position: absolute; width: 10px; height: 10px; background: #5A3A29; border-radius: 50%; }
+        .bubble.show-bubble { opacity: 1; transform: scale(1); transition: 0.5s; display: flex; flex-direction: column; align-items: center; }
 
-        /* 導航與解鎖提示 */
-        .nav-arrow, .nav-arrow-left { position: absolute; top: 55%; transform: translateY(-50%); font-size: 30px; color: rgba(90, 58, 41, 0.6); cursor: pointer; z-index: 90; background: rgba(255, 255, 255, 0.4); width: 40px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
-        .nav-arrow { right: 15px; }
-        .nav-arrow-left { left: 15px; display: none; }
-        .nav-arrow-left.show { display: flex; }
-        .unlock-hint { position: absolute; right: 5px; top: 49%; color: rgba(100, 100, 100, 0.7); font-size: 11px; font-weight: bold; }
-
-        /* 使用記錄卡片 (依照截圖風格) */
-        .session-card { background: #FFFAF5; border-radius: 15px; padding: 15px; border: 1px solid #F0E0D0; margin-bottom: 15px; position: relative; text-align: left; }
-        .duration-badge { position: absolute; top: 12px; right: 12px; background: #5A3A29; color: white; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; }
-        .session-count { color: #888; font-size: 14px; margin-bottom: 8px; display: block; }
-        .time-row { font-size: 16px; margin: 5px 0; color: #333; display: flex; align-items: center; }
-        .start-text { color: #4CAF50; font-weight: bold; margin-right: 8px; }
-        .end-text { color: #e76f51; font-weight: bold; margin-right: 8px; }
-
-        /* 修正彈窗按鈕顏色 */
-        .modal-btn { background: #5A3A29 !important; color: white !important; font-weight: bold; padding: 12px 40px; border-radius: 25px; border: none; cursor: pointer; }
+        /* 歷史記錄卡片風格 (依照截圖) */
+        .session-card { background: #FFFAF5; border-radius: 12px; padding: 15px; border: 1px solid #F0E0D0; margin-bottom: 12px; text-align: left; position: relative; }
+        .duration-tag { position: absolute; top: 10px; right: 10px; background: #5A3A29; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        .time-label { font-size: 14px; margin: 4px 0; }
+        .green-arrow { color: #4CAF50; font-weight: bold; }
+        .red-arrow { color: #E76F51; font-weight: bold; }
+        
+        .modal-btn { background: #5A3A29 !important; color: white !important; border-radius: 20px !important; padding: 10px 30px !important; }
     </style>
 </head>
-
 <body class="baby">
-    <div class="user-bar">
-        <span class="username">👤 {{ username }}</span>
-        <a href="/logout" class="logout-btn">登出</a>
+    <div class="user-bar" style="position: fixed; top: 0; width: 100%; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 10px 20px; display: flex; justify-content: space-between; z-index: 1000;">
+        <span>👤 {{ title }} ({{ username }})</span>
+        <a href="/logout" style="color: white; text-decoration: none; font-size: 12px;">登出</a>
     </div>
 
-    <div class="app-container" onclick="play()">
+    <div class="app-container" onclick="play()" style="padding-top: 60px;">
         <div class="header-box">Reborn</div>
-
         <div class="stats-box">
             <div class="exp-wrapper">
-                <div class="exp-header">
+                <div class="exp-header" style="display: flex; justify-content: space-between; font-weight: bold;">
                     <span>我的經驗值 (EXP)</span>
-                    <span id="level-display" style="color:#FF9800;">Lvl. {{ level }}</span>
+                    <span style="color:#FF9800;">Lvl. {{ level }}</span>
                 </div>
-                <div class="exp-progress-container">
-                    <div class="exp-progress-fill" id="exp-fill"></div>
+                <div style="background:#eee; height:12px; border-radius:6px; overflow:hidden;">
+                    <div id="exp-fill" style="width:{{ (xp % 50 / 50 * 100) }}%; height:100%; background:linear-gradient(90deg, #FFC107, #FF9800);"></div>
                 </div>
             </div>
         </div>
 
         <div class="scene">
-            <div class="char-clipper">
-                <div class="character"></div>
-            </div>
+            <div class="char-clipper"><div class="character"></div></div>
             <div class="cup-empty"></div>
             <div class="cup-full"></div>
         </div>
 
         <div class="bubble">
-            <span id="encourage-msg" style="font-size: 13px;"></span>
-            <a href="/scan" onclick="event.stopPropagation();" 
-               style="text-decoration: none; font-size: 18px; cursor: pointer; margin-top: 10px; display: block; color: #5A3A29; font-weight: bold;">
-                📷 拍照挑戰
-            </a>
+            <span id="encourage-msg">點我開始回收冒險！</span>
+            <a href="/scan" style="background:#5A3A29; color:white; padding:8px 15px; border-radius:20px; text-decoration:none; margin-top:10px; font-weight:bold;">📷 拍照挑戰</a>
         </div>
 
         <div class="chart-title-outer">本週咖啡時光 (小時)</div>
         <div class="chart-box">
-            <div class="chart-y-axis">
-                <span class="y-label">6h</span><span class="y-label">4h</span><span class="y-label">2h</span><span class="y-label">0h</span>
-            </div>
+            <div class="chart-y-axis"><span>6h</span><span>4h</span><span>2h</span><span>0h</span></div>
             <div class="chart-content">
                 <div class="chart-bars">
-                    {% set day_names = ['一', '二', '三', '四', '五', '六', '日'] %}
-                    {% set full_names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] %}
                     {% for i in range(7) %}
-                    <div class="bar-group" onclick="event.stopPropagation(); showDayDetails({{ i }}, '{{ full_names[i] }}')">
+                    <div class="bar-group" onclick="event.stopPropagation(); showDayDetails({{ i }}, '{{ ["一","二","三","四","五","六","日"][i] }}')">
                         <div class="bar" style="height: {{ (chart_data[i] / 6 * 100) if chart_data[i] < 6 else 100 }}%;"></div>
-                        <div class="day-label">{{ day_names[i] }}</div>
+                        <div class="day-label">{{ ["一","二","三","四","五","六","日"][i] }}</div>
                     </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
-
-        <div class="nav-arrow-left" id="nav-arrow-left" onclick="event.stopPropagation(); goBack()">&#10094;</div>
-        <div class="unlock-hint" id="unlock-hint">Lv.5 解鎖</div>
-        <div class="nav-arrow" onclick="event.stopPropagation(); goForward()">&#10095;</div>
     </div>
 
-    <div class="modal-overlay" id="day-details-modal" onclick="closeDayModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()">
-            <div class="modal-title" id="day-modal-title">📅 使用記錄</div>
-            <div id="day-sessions-list" style="max-height: 320px; overflow-y: auto; margin: 15px 0;"></div>
-            <button class="modal-btn" onclick="closeDayModal()">關閉</button>
+    <div class="modal-overlay" id="day-modal" onclick="this.classList.remove('show')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:320px;">
+            <h3 id="modal-title">📅 使用記錄</h3>
+            <div id="modal-list" style="max-height:300px; overflow-y:auto; margin: 15px 0;"></div>
+            <button class="modal-btn" onclick="document.getElementById('day-modal').classList.remove('show')">關閉</button>
         </div>
     </div>
 
     <script>
         const sessionsData = {{ sessions_data | tojson | safe }};
-        const currentExp = {{ xp | default(0) }};
-        const currentLevel = {{ level | default(1) }};
-        
-        // 初始化 XP 條
-        document.getElementById('exp-fill').style.width = (currentExp % 50 / 50 * 100) + '%';
-
-        // 動畫與氣泡邏輯 (跳過與否)
         function play() {
             const scene = document.querySelector('.scene');
             if (scene.classList.contains('active')) return;
             scene.classList.add('active', 'filling');
-            setTimeout(() => {
-                document.querySelector('.character').classList.add('jump');
-                createSplash();
-            }, 2950);
+            setTimeout(() => document.querySelector('.character').classList.add('jump'), 2950);
             setTimeout(() => {
                 document.querySelector('.bubble').classList.add('show-bubble');
-                document.getElementById('encourage-msg').innerText = "回收地球，我最拿手！✨";
-                sessionStorage.setItem('animationPlayed', 'true');
+                document.getElementById('encourage-msg').innerText = "今天要一起做回收嗎？";
             }, 3500);
         }
-
-        function createSplash() {
-            const scene = document.querySelector('.scene');
-            for (let i = 0; i < 15; i++) {
-                const d = document.createElement('div');
-                d.className = 'droplet';
-                scene.appendChild(d);
-                const r = Math.random() * Math.PI * 2, f = 40 + Math.random() * 60;
-                d.animate([{transform:'translate(0,0)',opacity:1},{transform:`translate(${Math.cos(r)*f}px,${Math.sin(r)*f-50}px)`,opacity:0}], {duration:800}).onfinish=()=>d.remove();
-            }
-        }
-
-        // 彈窗顯示邏輯 (復刻截圖外觀)
         function showDayDetails(idx, name) {
-            const list = document.getElementById('day-sessions-list');
-            document.getElementById('day-modal-title').innerText = `📅 ${name} 使用記錄`;
+            const list = document.getElementById('modal-list');
+            document.getElementById('modal-title').innerText = `星期${name} 使用記錄`;
             const sessions = sessionsData[idx] || [];
-            if (sessions.length === 0) {
-                list.innerHTML = `<div style="padding:40px; color:#999; text-align:center;"><div style="font-size:50px;">📭</div>這天還沒有使用記錄喔～</div>`;
-            } else {
-                list.innerHTML = sessions.map((s, i) => `
-                    <div class="session-card">
-                        <span class="session-count">第 ${i + 1} 次</span>
-                        <div class="duration-badge">${s.duration}</div>
-                        <div class="time-row"><span class="start-text">▸ 開始</span> ${s.start}</div>
-                        <div class="time-row"><span class="end-text">◂ 結束</span> ${s.end}</div>
-                    </div>
-                `).join('');
-            }
-            document.getElementById('day-details-modal').classList.add('show');
+            list.innerHTML = sessions.length ? sessions.map((s, i) => `
+                <div class="session-card">
+                    <span style="color:#888; font-size:12px;">第 ${i+1} 次</span>
+                    <div class="duration-tag">${s.duration}</div>
+                    <div class="time-label"><span class="green-arrow">▸ 開始</span> ${s.start}</div>
+                    <div class="time-label"><span class="red-arrow">◂ 結束</span> ${s.end}</div>
+                </div>
+            `).join('') : "今天還沒有紀錄喔～ 📭";
+            document.getElementById('day-modal').classList.add('show');
         }
-
-        function closeDayModal() { document.getElementById('day-details-modal').classList.remove('show'); }
-
-        // 角色管理
-        let charIdx = parseInt(localStorage.getItem('charIdx')) || 0;
-        const chars = ['baby', 'cat', 'fox'], unlockLvls = [0, 5, 10];
-        function applyChar() {
-            const c = document.querySelector('.character');
-            c.classList.remove('cat', 'fox');
-            if(chars[charIdx] !== 'baby') c.classList.add(chars[charIdx]);
-            document.getElementById('nav-arrow-left').classList.toggle('show', charIdx > 0);
-            const hint = document.getElementById('unlock-hint');
-            if (charIdx < 2 && currentLevel < unlockLvls[charIdx+1]) {
-                hint.innerText = `Lv.${unlockLvls[charIdx+1]} 解鎖`;
-                hint.style.display = 'block';
-            } else { hint.style.display = 'none'; }
-        }
-        function goForward() {
-            if (charIdx < 2 && currentLevel >= unlockLvls[charIdx+1]) { charIdx++; localStorage.setItem('charIdx', charIdx); applyChar(); }
-            else if (charIdx < 2) alert(`還差一點點！升到 Lv.${unlockLvls[charIdx+1]} 就能解鎖夥伴囉！`);
-        }
-        function goBack() { if(charIdx > 0) { charIdx--; localStorage.setItem('charIdx', charIdx); applyChar(); } }
-
-        window.onload = () => {
-            applyChar();
-            if (sessionStorage.getItem('animationPlayed')) {
-                const scene = document.querySelector('.scene');
-                scene.classList.add('active', 'filling');
-                document.querySelector('.character').classList.add('jump');
-                document.querySelector('.bubble').classList.add('show-bubble');
-                document.getElementById('encourage-msg').innerText = "歡迎回來！繼續挑戰吧！🌱";
-            }
-        };
     </script>
 </body>
 </html>
