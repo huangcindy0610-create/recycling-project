@@ -3,7 +3,7 @@ import re
 import hashlib
 from PIL import Image
 import google.generativeai as genai
-from flask import Flask, render_template, request, url_for, send_from_directory # 確保導入這些
+from flask import Flask, render_template, request, url_for, send_from_directory
 
 # ==========================================
 # 1. 初始化設定
@@ -15,11 +15,13 @@ UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# 從環境變數讀取 API KEY
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    MODEL_NAME = "gemini-1.5-flash" # 修正模型名稱建議使用 1.5-flash 較穩定
+    # 建議使用 gemini-1.5-flash，速度快且對圖片辨識度高
+    MODEL_NAME = "gemini-1.5-flash" 
     model = genai.GenerativeModel(MODEL_NAME)
 else:
     model = None
@@ -30,7 +32,7 @@ XP_REWARD_WRONG = 10
 XP_PER_LEVEL = 50
 
 # ==========================================
-# 2. 功能函數 (保留你原本的邏輯)
+# 2. 功能函數
 # ==========================================
 
 def get_image_hash(image_path):
@@ -52,29 +54,52 @@ def recognize_item(image_path):
         return f"AI 辨識暫時忙碌中: {str(e)}"
 
 def generate_recycling_quiz(item_description):
-    # ... (保留你原本的 generate_recycling_quiz 內容)
+    # 這裡放你原本的題目生成邏輯
     return "關於此物品的回收方式？", "(A)清洗後 (B)直接丟", "A", "解析文字"
 
 # ==========================================
-# 3. 路由設定 (修正 BuildError 的關鍵)
+# 3. 路由設定
 # ==========================================
 
-# 這是你剛才補上的，確保 Flask 知道去哪裡抓圖片
+# 新增：健康檢查路徑，解決 Render 404 問題
+@app.route('/healthz')
+def health_check():
+    return "OK", 200
+
+# 確保 Flask 知道去哪裡抓圖片
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    # 這裡的 'uploads' 必須與 UPLOAD_FOLDER 一致
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route('/')
 def index():
-    return "回收專案運行中"
+    return "回收專案運行中 (The recycling project is running!)"
 
 @app.route('/scan', methods=['POST'])
 def scan_page():
-    # 假設這裡是你處理上傳邏輯的地方
-    # 範例：image_file = "test.jpg"
-    # return render_template('result.html', image_file=image_file)
-    pass
+    if 'file' not in request.files:
+        return "沒有上傳檔案", 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return "未選擇檔案", 400
 
+    if file:
+        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(file_path)
+        
+        # 執行辨識
+        description = recognize_item(file_path)
+        
+        # 這裡你可以根據需求 render 你的 result.html
+        # return render_template('result.html', description=description, image_file=file.filename)
+        return f"辨識結果: {description}"
+
+# ==========================================
+# 4. 啟動設定
+# ==========================================
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Render 會提供 PORT 環境變數，如果沒有則預設 5000
+    port = int(os.environ.get("PORT", 5000))
+    # 部署到 Render 時 debug 建議設為 False
+    app.run(host='0.0.0.0', port=port, debug=False)
