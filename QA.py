@@ -13,7 +13,7 @@ API_KEY = os.environ.get("GEMINI_API_KEY")
 if API_KEY:
     genai.configure(api_key=API_KEY)
     # 固定使用 1.5-flash 模型，穩定且快速
-    MODEL_NAME = "gemini-1.5-flash"
+    MODEL_NAME = "gemini-2.5-flash"
     model = genai.GenerativeModel(MODEL_NAME)
 else:
     # 防止 API Key 缺失導致整個程式崩潰
@@ -72,3 +72,4 @@ def generate_recycling_quiz(item_description):
     except Exception:
         # 萬一 AI 回傳格式不符，提供一組保底題目防止 500 錯誤
         return "關於此物品的回收方式？", "(A)清洗後丟回收桶 (B)直接丟垃圾桶", "A", "正確的回收流程能減少環境負擔。"
+
