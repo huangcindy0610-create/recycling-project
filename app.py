@@ -3,6 +3,10 @@ import os
 import requests
 from functools import wraps
 from datetime import datetime, timedelta
+# --- 新增處理圖片的套件 ---
+from PIL import Image
+import pillow_heif
+
 # 確保 QA.py 與 auth.py 與此檔案在同一目錄
 from QA import (recognize_item, generate_recycling_quiz, get_level, 
                 XP_REWARD_CORRECT, XP_REWARD_WRONG, get_image_hash)
@@ -23,19 +27,15 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # 後端 API 網址 (recycling-project-1)
 NFC_API_URL = "https://recycling-project-1.onrender.com/view"
 
-# === 1. NFC 數據處理函數 (定義在路由之前) ===
-
+# === 1. NFC 數據處理函數 ===
 def get_weekly_usage():
-    """抓取 JSON 並計算本週每天時數"""
     weekly_seconds = {i: 0 for i in range(7)}
     try:
         response = requests.get(NFC_API_URL, timeout=10)
         data = response.json()
         if not isinstance(data, list): return weekly_seconds
-
         today = datetime.now()
         monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        
         for item in data:
             if item.get('start') and item.get('end'):
                 try:
@@ -49,16 +49,13 @@ def get_weekly_usage():
     return {day: round(sec / 3600, 1) for day, sec in weekly_seconds.items()}
 
 def get_weekly_sessions():
-    """抓取 JSON 並整理詳細記錄"""
     weekly_sessions = {i: [] for i in range(7)}
     try:
         response = requests.get(NFC_API_URL, timeout=10)
         data = response.json()
         if not isinstance(data, list): return weekly_sessions
-
         today = datetime.now()
         monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        
         for item in data:
             if item.get('start'):
                 try:
@@ -70,7 +67,6 @@ def get_weekly_sessions():
                             h, m = divmod(int(diff.total_seconds()), 3600)
                             m, s = divmod(m, 60)
                             dur = f"{h:02}:{m:02}:{s:02}"
-                        
                         weekly_sessions[st.weekday()].append({
                             'start': item['start'].split(' ')[1],
                             'end': item['end'].split(' ')[1] if item.get('end') else "進行中",
@@ -81,7 +77,6 @@ def get_weekly_sessions():
     return weekly_sessions
 
 def get_chart_data():
-    """安全地封裝圖表數據"""
     try:
         usage = get_weekly_usage()
         sessions = get_weekly_sessions()
@@ -93,7 +88,6 @@ def get_chart_data():
         return [0.0]*7, [[] for _ in range(7)]
 
 # === 2. 登入裝飾器 ===
-
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -103,7 +97,6 @@ def login_required(f):
     return decorated_function
 
 # === 3. 核心路由 ===
-
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
     if request.method == 'POST':
@@ -137,9 +130,7 @@ def logout():
 def home():
     username = session['username']
     xp = get_user_xp_by_username(username)
-    # 使用修正後的安全數據獲取函數
     hours_list, sessions_list = get_chart_data()
-    
     return render_template('demo_baby_v4.html', 
                            xp=xp, 
                            level=get_level(xp), 
@@ -154,10 +145,33 @@ def scan_page():
     if request.method == 'POST':
         file = request.files.get('file')
         if file and file.filename:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            filename = file.filename
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
             
-            # AI 辨識與題目生成
+            # --- 新增：處理 HEIC 轉檔邏輯 ---
+            if filename.lower().endswith('.heic'):
+                try:
+                    heif_file = pillow_heif.read_heif(filepath)
+                    image = Image.frombytes(
+                        heif_file.mode, 
+                        heif_file.size, 
+                        heif_file.data,
+                        "raw",
+                    )
+                    # 更改副檔名為 .jpg
+                    new_filename = filename.rsplit('.', 1)[0] + ".jpg"
+                    new_filepath = os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
+                    image.save(new_filepath, "JPEG")
+                    
+                    # 更新後續辨識使用的路徑與檔名
+                    filepath = new_filepath
+                    filename = new_filename
+                except Exception as e:
+                    return f"HEIC 轉檔失敗: {e}"
+            # --------------------------
+
+            # AI 辨識與題目生成 (傳入的是處理過的 filepath)
             item_result = recognize_item(filepath)
             if "失敗" in item_result or "忙碌" in item_result:
                 return f"AI 辨識發生錯誤: {item_result}"
@@ -166,7 +180,7 @@ def scan_page():
             session.update({'correct_answer': a, 'explanation': e})
             
             return render_template('result.html', 
-                                   image_file=file.filename, 
+                                   image_file=filename, 
                                    item_result=item_result, 
                                    question=q, 
                                    options=o, 
@@ -181,10 +195,8 @@ def scan_page():
 def submit_answer():
     user_ans = request.json.get('answer', '').upper()
     correct_ans = session.get('correct_answer')
-    
     xp = XP_REWARD_CORRECT if user_ans == correct_ans else XP_REWARD_WRONG
     new_xp = update_user_xp_by_username(session['username'], xp)
-    
     return jsonify({
         'correct': user_ans == correct_ans, 
         'gained_xp': xp, 
@@ -194,8 +206,6 @@ def submit_answer():
 @app.route('/healthz')
 def healthz():
     return "OK", 200
-
-# === 4. 啟動區塊 (必須在最末端) ===
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
