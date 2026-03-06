@@ -12,13 +12,14 @@ pillow_heif.register_heif_opener()
 # 1. 初始化設定
 # ==========================================
 app = Flask(__name__)
+# 確保環境變數中有 FLASK_SECRET_KEY，否則使用預設值
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "recycling-secret-123")
 
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# 模擬資料庫 (Render 重啟會重置)
+# 模擬資料庫 (Render 重啟時會清空)
 daily_usage = {}   
 uploaded_hashes = set() 
 DAILY_LIMIT = 10
@@ -26,7 +27,8 @@ DAILY_LIMIT = 10
 API_KEY = os.environ.get("GEMINI_API_KEY")
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    # 【關鍵修正】：使用完整的模型路徑，解決 404 找不到模型的問題
+    model = genai.GenerativeModel("models/gemini-1.5-flash")
 else:
     model = None
 
@@ -38,13 +40,14 @@ XP_REWARD_WRONG = 10
 # ==========================================
 
 def get_image_hash(image_path):
+    """產生圖片雜湊值避免重複刷分"""
     with open(image_path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
 
 def recognize_item(image_path):
     if not model: return "API 未設定，材質是未知。"
     try:
-        # 開啟圖片並強制轉為 RGB 確保相容性
+        # 開啟圖片並轉為 RGB 確保相容性
         img = Image.open(image_path)
         if img.mode != 'RGB':
             img = img.convert('RGB')
@@ -52,16 +55,22 @@ def recognize_item(image_path):
         prompt = "請辨識圖片中的物品名稱與材質。格式：這是一個(物品)，材質是(材質)。"
         response = model.generate_content([prompt, img])
         
-        # 如果 AI 沒回傳內容，給予預設文字
-        return response.text.strip() if response.text else "這是一個物品，材質是待確認。"
+        # 確保回傳內容不為空
+        if response and response.text:
+            return response.text.strip()
+        return "這是一個物品，材質是待確認。"
     except Exception as e:
-        # 即使報錯也回傳字串，確保前端模板不會崩潰
+        # 錯誤捕捉：防止後端崩潰導致介面消失
+        print(f"辨識報錯: {str(e)}")
         return f"這是一個物品，材質是待確認。(原因: {str(e)})"
 
 def generate_recycling_quiz(item_description):
-    # 使用防呆分割，避免 description 格式不對導致報錯
-    parts = item_description.split('，')
-    item_name = parts[0].replace("這是一個", "") if len(parts) > 0 else "物品"
+    """防呆題目生成邏輯"""
+    try:
+        parts = item_description.split('，')
+        item_name = parts[0].replace("這是一個", "") if len(parts) > 0 else "物品"
+    except:
+        item_name = "物品"
     
     question = f"關於「{item_name}」的回收處理方式，哪一個正確？"
     options = "(A) 直接丟進一般垃圾\n(B) 根據材質分類回收\n(C) 焚燒處理\n(D) 隨便亂丟"
@@ -88,41 +97,40 @@ def index():
 
 @app.route('/scan', methods=['POST'])
 def scan_page():
-    user = "環保小隊長"
+    user = "環保小隊長" # 找回你的小嬰兒介面稱號
     used = daily_usage.get(user, 0)
     
-    # 用於報錯時回傳首頁的參數
-    index_params = {"username": user, "remaining_uploads": max(0, DAILY_LIMIT - used), "daily_limit": DAILY_LIMIT}
+    # 建立預設參數包，確保任何 return 都能帶上介面資訊
+    ui_params = {"username": user, "remaining_uploads": max(0, DAILY_LIMIT - used), "daily_limit": DAILY_LIMIT}
 
-    # 1. 檢查次數
     if used >= DAILY_LIMIT:
-        return render_template('index.html', **index_params, daily_limit_error=True)
+        return render_template('index.html', **ui_params, daily_limit_error=True)
 
     file = request.files.get('file')
     if not file or file.filename == '':
-        return "檔名不可為空", 400
+        return "檔案上傳失敗", 400
 
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(file_path)
 
-    # 2. 檢查重複 (Hash)
+    # 檢查重複
     img_hash = get_image_hash(file_path)
     if img_hash in uploaded_hashes:
         os.remove(file_path)
-        return render_template('index.html', **index_params, duplicate_error=True)
+        return render_template('index.html', **ui_params, duplicate_error=True)
 
-    # 3. 通過檢查
+    # 通過檢查後才計費/計次
     uploaded_hashes.add(img_hash)
     daily_usage[user] = used + 1
     
-    # 4. AI 辨識與出題
+    # 執行 AI 辨識
     description = recognize_item(file_path)
     q, opt, ans, expl = generate_recycling_quiz(description)
     
+    # 將答案存在 session 供驗證
     session['correct_answer'] = ans
     session['explanation'] = expl
 
-    # 確保所有 result.html 需要的變數都有傳入，找回你的小隊長介面！
     return render_template('result.html', 
                            username=user, 
                            image_file=file.filename,
@@ -133,16 +141,20 @@ def scan_page():
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
     data = request.get_json()
-    is_correct = (data.get('answer') == session.get('correct_answer'))
+    user_ans = data.get('answer')
+    correct_ans = session.get('correct_answer', 'B')
+    
+    is_correct = (user_ans == correct_ans)
     return jsonify({
         "correct": is_correct,
         "gained_xp": XP_REWARD_CORRECT if is_correct else XP_REWARD_WRONG,
-        "correct_answer": session.get('correct_answer', 'B'),
-        "explanation": session.get('explanation', '尚無解析'),
+        "correct_answer": correct_ans,
+        "explanation": session.get('explanation', '正確分類非常重要！'),
         "leveled_up": False,
         "new_level": 1
     })
 
 if __name__ == '__main__':
+    # Render 環境埠號設定
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
